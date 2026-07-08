@@ -10,6 +10,8 @@ permissions:
 jobs:
   update-csv:
     runs-on: ubuntu-latest
+    env:
+      MY_GITHUB_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -38,6 +40,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          git remote set-url origin https://x-access-token:${MY_GITHUB_TOKEN}@github.com/${{ github.repository }}.git
           git add transactions_ledger.csv
           git commit -m "Update transactions_ledger.csv from dashboard dispatch" || echo "No changes to commit"
           git push origin HEAD:${{ github.ref_name }}
