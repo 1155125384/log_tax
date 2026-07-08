@@ -1286,7 +1286,47 @@
             return url;
         }
 
-        function loadCSVFromGitHubUrl(urlOverride, silent = false) {
+        function getSavedPat() {
+            const tokenInput = document.getElementById('tokenUiInput');
+            return (tokenInput && tokenInput.value && tokenInput.value.trim())
+                ? tokenInput.value.trim()
+                : localStorage.getItem('FIN_LEDGER_TRIGGER_TOKEN') || localStorage.getItem('FIN_LEDGER_GITHUB_TOKEN') || '';
+        }
+
+        async function fetchGitHubCsvViaApi(silent = false) {
+            const apiUrl = `${GITHUB_API_BASE}/repos/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/contents/${encodeURIComponent(GITHUB_FILE_PATH)}?ref=${GITHUB_BRANCH}`;
+            const headers = {
+                'Accept': 'application/vnd.github+json'
+            };
+            const token = getSavedPat();
+            if (token) {
+                headers['Authorization'] = `Bearer ${token}`;
+            }
+
+            const response = await fetch(apiUrl, {
+                method: 'GET',
+                headers,
+                cache: 'no-store',
+                mode: 'cors'
+            });
+
+            if (!response.ok) {
+                const body = await response.text();
+                if ((response.status === 401 || response.status === 403) && !token) {
+                    throw new Error(`GitHub API read failed: ${response.status} ${response.statusText}. No valid PAT is saved; save a GitHub PAT with repo scope to use the API fallback.`);
+                }
+                throw new Error(`GitHub API read failed: ${response.status} ${response.statusText} ${body}`);
+            }
+
+            const data = await response.json();
+            if (!data || !data.content) {
+                throw new Error('GitHub API did not return file content.');
+            }
+
+            return atob(data.content.replace(/\s+/g, ''));
+        }
+
+        async function loadCSVFromGitHubUrl(urlOverride, silent = false) {
             const rawUrlInput = urlOverride || GITHUB_RAW_CSV_URL;
             if (!rawUrlInput) {
                 if (!silent) {
@@ -1304,56 +1344,70 @@
                 normalizedUrl = `${normalizedUrl}${normalizedUrl.includes('?') ? '&' : '?'}_=${Date.now()}`;
             }
 
-            fetch(normalizedUrl, { cache: 'no-store', headers: { 'Cache-Control': 'no-cache' } })
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error(`Request failed with status ${response.status}`);
-                    }
-                    return response.text();
-                })
-                .then(rawText => {
-                    const parseMatrixRows = parseRFC4180CSV(rawText);
-                    if (parseMatrixRows.length < 2) {
-                        throw new Error("CSV file appears empty or invalid.");
-                    }
+            let rawText;
+            try {
+                if (!silent && window.location.protocol === 'file:') {
+                    console.warn('Page is being served from file://. Network fetches may fail from this origin.');
+                }
+                const response = await fetch(normalizedUrl, { cache: 'no-store', mode: 'cors', headers: { 'Cache-Control': 'no-cache' }, credentials: 'omit' });
+                if (!response.ok) {
+                    throw new Error(`Request failed with status ${response.status}`);
+                }
+                rawText = await response.text();
+            } catch (initialError) {
+                if (!silent) {
+                    console.warn('Raw GitHub fetch failed, falling back to GitHub API:', initialError);
+                    alert('Raw GitHub fetch failed. Attempting fallback via the GitHub API.');
+                }
+                rawText = await fetchGitHubCsvViaApi(silent);
+            }
 
-                    const headersMapArray = parseMatrixRows[0].map(h => h.trim());
-                    const targetStateBuffer = [];
+            try {
+                const parseMatrixRows = parseRFC4180CSV(rawText);
+                if (parseMatrixRows.length < 2) {
+                    throw new Error("CSV file appears empty or invalid.");
+                }
 
-                    for (let r = 1; r < parseMatrixRows.length; r++) {
-                        const dataRow = parseMatrixRows[r];
-                        if (dataRow.length < 5) continue;
+                const headersMapArray = parseMatrixRows[0].map(h => h.trim());
+                const targetStateBuffer = [];
 
-                        targetStateBuffer.push({
-                            id: 'tx_row_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5) + '_' + r,
-                            date: dataRow[headersMapArray.indexOf("Date")] || new Date().toISOString().split('T')[0],
-                            type: dataRow[headersMapArray.indexOf("Type")] || "Expense",
-                            category: dataRow[headersMapArray.indexOf("Category")] || "Miscellaneous Expenditures",
-                            nature: dataRow[headersMapArray.indexOf("Nature")] || "Real",
-                            amount: parseFloat(dataRow[headersMapArray.indexOf("Amount")] || 0),
-                            description: dataRow[headersMapArray.indexOf("Description")] || "",
-                            attachmentBase64: dataRow[headersMapArray.indexOf("AttachmentBase64")] || ""
-                        });
-                    }
+                for (let r = 1; r < parseMatrixRows.length; r++) {
+                    const dataRow = parseMatrixRows[r];
+                    if (dataRow.length < 5) continue;
 
-                    if (!targetStateBuffer.length) {
-                        throw new Error("No valid data rows were found in the CSV.");
-                    }
+                    targetStateBuffer.push({
+                        id: 'tx_row_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5) + '_' + r,
+                        date: dataRow[headersMapArray.indexOf("Date")] || new Date().toISOString().split('T')[0],
+                        type: dataRow[headersMapArray.indexOf("Type")] || "Expense",
+                        category: dataRow[headersMapArray.indexOf("Category")] || "Miscellaneous Expenditures",
+                        nature: dataRow[headersMapArray.indexOf("Nature")] || "Real",
+                        amount: parseFloat(dataRow[headersMapArray.indexOf("Amount")] || 0),
+                        description: dataRow[headersMapArray.indexOf("Description")] || "",
+                        attachmentBase64: dataRow[headersMapArray.indexOf("AttachmentBase64")] || ""
+                    });
+                }
 
-                    transactionsState = targetStateBuffer;
-                    saveWorkspaceToLocalStorage();
-                    currentActivePage = 1;
-                    processFilterView();
-                    const hintNode = document.getElementById("githubCsvHint");
-                    if (hintNode) {
-                        hintNode.textContent = `Loaded ${transactionsState.length} rows from GitHub.`;
+                if (!targetStateBuffer.length) {
+                    throw new Error("No valid data rows were found in the CSV.");
+                }
+
+                transactionsState = targetStateBuffer;
+                saveWorkspaceToLocalStorage();
+                currentActivePage = 1;
+                processFilterView();
+                const hintNode = document.getElementById("githubCsvHint");
+                if (hintNode) {
+                    hintNode.textContent = `Loaded ${transactionsState.length} rows from GitHub.`;
+                }
+            } catch (error) {
+                if (!silent) {
+                    let message = error.message || String(error);
+                    if (message.includes('Failed to fetch')) {
+                        message = 'Failed to reach GitHub from this browser. Ensure you have internet access, that the page is served over http/https, and save a valid GitHub PAT for API fallback if needed.';
                     }
-                })
-                .catch(error => {
-                    if (!silent) {
-                        alert(`Unable to load CSV from GitHub: ${error.message}`);
-                    }
-                });
+                    alert(`Unable to load CSV from GitHub: ${message}`);
+                }
+            }
         }
 
         // Asynchronous Document Print Generation Engine functions
