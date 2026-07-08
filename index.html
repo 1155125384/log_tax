@@ -95,6 +95,32 @@
             <p id="githubCsvHint" class="text-[11px] text-slate-500">This page always loads from the repo CSV at <code>transactions_ledger.csv</code>. Committing a new entry will also attempt to update the GitHub file.</p>
         </section>
 
+        <!-- Dashboard Period Selector -->
+        <section class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 flex flex-col gap-4">
+            <div class="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
+                <div>
+                    <h2 class="text-sm font-semibold text-slate-700 uppercase tracking-wider">Dashboard Period</h2>
+                    <p class="text-xs text-slate-500">Choose the date range to visualize the KPIs, chart, and ledger rows. Leave blank to view all available records.</p>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto_auto] gap-3 w-full lg:max-w-2xl">
+                    <div>
+                        <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">Start Date</label>
+                        <input type="date" id="dashboardPeriodStart" onchange="applyDashboardPeriodFilter()" class="w-full bg-slate-50 border border-slate-300 rounded-lg text-xs px-2.5 py-1.5 focus:outline-none focus:border-indigo-500">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">End Date</label>
+                        <input type="date" id="dashboardPeriodEnd" onchange="applyDashboardPeriodFilter()" class="w-full bg-slate-50 border border-slate-300 rounded-lg text-xs px-2.5 py-1.5 focus:outline-none focus:border-indigo-500">
+                    </div>
+                    <div class="flex items-end">
+                        <button type="button" onclick="applyDashboardPeriodFilter()" class="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg shadow font-medium text-sm transition">Apply Range</button>
+                    </div>
+                    <div class="flex items-end">
+                        <button type="button" onclick="resetDashboardPeriodFilter()" class="w-full py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg shadow font-medium text-sm transition">Reset</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
         <!-- Dynamic KPI Financial Metrics Bar -->
         <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <!-- Total Income Card -->
@@ -267,12 +293,12 @@
                     </select>
                 </div>
                 <div>
-                    <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">Start Interval Date</label>
-                    <input type="date" id="filterStartDate" onchange="processFilterView()" class="w-full bg-slate-50 border border-slate-300 rounded-lg text-xs px-2.5 py-1.5 focus:outline-none focus:border-indigo-500">
+                    <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">Period Start</label>
+                    <input type="date" id="filterStartDate" onchange="handlePeriodFilterChange()" class="w-full bg-slate-50 border border-slate-300 rounded-lg text-xs px-2.5 py-1.5 focus:outline-none focus:border-indigo-500">
                 </div>
                 <div>
-                    <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">End Interval Date</label>
-                    <input type="date" id="filterEndDate" onchange="processFilterView()" class="w-full bg-slate-50 border border-slate-300 rounded-lg text-xs px-2.5 py-1.5 focus:outline-none focus:border-indigo-500">
+                    <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">Period End</label>
+                    <input type="date" id="filterEndDate" onchange="handlePeriodFilterChange()" class="w-full bg-slate-50 border border-slate-300 rounded-lg text-xs px-2.5 py-1.5 focus:outline-none focus:border-indigo-500">
                 </div>
                 <div class="flex items-end">
                     <button type="button" id="showAllBtn" onclick="toggleShowAllRecords()" class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg shadow font-medium text-sm transition">
@@ -441,6 +467,47 @@
 
         function initializeDefaults() {
             document.getElementById('formDate').valueAsDate = new Date();
+        }
+
+        function applyDashboardPeriodFilter() {
+            const startInput = document.getElementById('dashboardPeriodStart');
+            const endInput = document.getElementById('dashboardPeriodEnd');
+            const filterStartInput = document.getElementById('filterStartDate');
+            const filterEndInput = document.getElementById('filterEndDate');
+
+            if (filterStartInput) filterStartInput.value = startInput ? startInput.value : '';
+            if (filterEndInput) filterEndInput.value = endInput ? endInput.value : '';
+
+            currentActivePage = 1;
+            processFilterView();
+        }
+
+        function resetDashboardPeriodFilter() {
+            const startInput = document.getElementById('dashboardPeriodStart');
+            const endInput = document.getElementById('dashboardPeriodEnd');
+            const filterStartInput = document.getElementById('filterStartDate');
+            const filterEndInput = document.getElementById('filterEndDate');
+
+            if (startInput) startInput.value = '';
+            if (endInput) endInput.value = '';
+            if (filterStartInput) filterStartInput.value = '';
+            if (filterEndInput) filterEndInput.value = '';
+
+            currentActivePage = 1;
+            processFilterView();
+        }
+
+        function handlePeriodFilterChange() {
+            const filterStartInput = document.getElementById('filterStartDate');
+            const filterEndInput = document.getElementById('filterEndDate');
+            const dashboardStartInput = document.getElementById('dashboardPeriodStart');
+            const dashboardEndInput = document.getElementById('dashboardPeriodEnd');
+
+            if (dashboardStartInput) dashboardStartInput.value = filterStartInput ? filterStartInput.value : '';
+            if (dashboardEndInput) dashboardEndInput.value = filterEndInput ? filterEndInput.value : '';
+
+            currentActivePage = 1;
+            processFilterView();
         }
 
         // Dynamically populates form category dropdown selection options based on structural data schema context mapping
@@ -893,7 +960,8 @@
             let totalIncome = 0;
             let totalExpenses = 0;
 
-            transactionsState.forEach(tx => {
+            const visibleTransactions = filteredTransactionsCache.length ? filteredTransactionsCache : transactionsState;
+            visibleTransactions.forEach(tx => {
                 if (tx.type === "Income") totalIncome += tx.amount;
                 else if (tx.type === "Expense") totalExpenses += tx.amount;
             });
@@ -1113,11 +1181,11 @@
         function renderAnalyticalTrendChart() {
             const canvasContextElement = document.getElementById("trendChart").getContext("2d");
             
-            // Collect chronologically sorted lists of all transaction dates
+            // Collect chronologically sorted lists of records visible in the active period
             const trackingTimelineMap = {};
+            const visibleTransactions = filteredTransactionsCache.length ? filteredTransactionsCache : transactionsState;
             
-            // Process reverse layout ordering copy for timeline trend line generation processing
-            const sortedTemporalClones = [...transactionsState].sort((a, b) => new Date(a.date) - new Date(b.date));
+            const sortedTemporalClones = [...visibleTransactions].sort((a, b) => new Date(a.date) - new Date(b.date));
 
             sortedTemporalClones.forEach(tx => {
                 if (!trackingTimelineMap[tx.date]) {
