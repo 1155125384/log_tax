@@ -11,6 +11,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Chart.js CDN -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <!-- html2pdf.js CDN -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <style>
@@ -1801,41 +1802,15 @@
             const visibleRows = transactionsState.filter(tx => {
                 return csvBrowserFilterRows.every(row => {
                     const column = row.column;
-                    if (!row.value && column !== 'Date' && column !== 'Amount' && column !== 'Description') {
-                        return true;
-                    }
-
-                    if (column === 'Date') {
-                        const startDate = row.startDate;
-                        const endDate = row.endDate;
-                        const matchesStart = !startDate || tx.date >= startDate;
-                        const matchesEnd = !endDate || tx.date <= endDate;
-                        return matchesStart && matchesEnd;
-                    }
-
-                    if (column === 'Description') {
-                        const searchText = (row.value || '').trim().toLowerCase();
-                        return !searchText || (tx.description || '').toLowerCase().includes(searchText);
-                    }
-
-                    if (column === 'Amount') {
-                        const minAmount = row.minAmount === '' ? NaN : parseFloat(row.minAmount);
-                        const maxAmount = row.maxAmount === '' ? NaN : parseFloat(row.maxAmount);
-                        const amount = Number(tx.amount || 0);
-                        const meetsMin = Number.isNaN(minAmount) || amount >= minAmount;
-                        const meetsMax = Number.isNaN(maxAmount) || amount <= maxAmount;
-                        return meetsMin && meetsMax;
-                    }
-
+                    if (!row.value && column !== 'Date' && column !== 'Amount' && column !== 'Description') return true;
+                    if (column === 'Date') return (!row.startDate || tx.date >= row.startDate) && (!row.endDate || tx.date <= row.endDate);
+                    if (column === 'Description') return !(row.value || '').trim() || (tx.description || '').toLowerCase().includes((row.value || '').trim().toLowerCase());
+                    if (column === 'Amount') return (Number.isNaN(parseFloat(row.minAmount)) || Number(tx.amount || 0) >= parseFloat(row.minAmount)) && (Number.isNaN(parseFloat(row.maxAmount)) || Number(tx.amount || 0) <= parseFloat(row.maxAmount));
+                    
                     const searchText = (row.value || '').trim().toLowerCase();
                     if (!searchText) return true;
-
-                    let rawValue = '';
-                    if (column === 'Type') rawValue = tx.type || '';
-                    else if (column === 'Category') rawValue = tx.category || '';
-                    else if (column === 'Nature') rawValue = tx.nature || 'Real';
-
-                    return String(rawValue).toLowerCase() === searchText;
+                    let rawValue = column === 'Type' ? tx.type : (column === 'Category' ? tx.category : (column === 'Nature' ? tx.nature : ''));
+                    return String(rawValue || 'Real').toLowerCase() === searchText;
                 });
             });
 
@@ -1844,103 +1819,176 @@
                 return;
             }
 
-            let incSum = 0;
-            let expSum = 0;
-            visibleRows.forEach(tx => {
-                if (tx.type === 'Income') incSum += tx.amount;
-                else expSum += tx.amount;
-            });
+            let incSum = 0, expSum = 0;
+            visibleRows.forEach(tx => { if (tx.type === 'Income') incSum += tx.amount; else expSum += tx.amount; });
             const netCalc = incSum - expSum;
 
-            const PdfLib = window.jspdf && window.jspdf.jsPDF ? window.jspdf.jsPDF : window.jsPDF;
-            if (!PdfLib) {
-                alert('The PDF library is not available in this browser session.');
-                return;
-            }
+            const PdfLib = window.jspdf && window.jspdf.jsPDF ? window.jspdf.jsPDF : (window.jsPDF && window.jsPDF.jsPDF ? window.jsPDF.jsPDF : window.jsPDF);
+            if (!PdfLib) return alert('PDF library is not available.');
 
             const doc = new PdfLib('p', 'pt', 'a4');
             const pageWidth = doc.internal.pageSize.getWidth();
             const pageHeight = doc.internal.pageSize.getHeight();
-            const marginX = 40;
-            const marginY = 40;
-            const lineHeight = 15;
+            const marginX = 40, marginY = 40, lineHeight = 16;
             let cursorY = marginY;
 
-            const addWrappedText = (text, x, y, maxWidth, fontSize = 10) => {
+            // Helper to wrap text
+            const addWrappedText = (text, x, y, maxWidth, fontSize = 10, isBold = false) => {
                 doc.setFontSize(fontSize);
+                doc.setFont('helvetica', isBold ? 'bold' : 'normal');
                 const words = String(text || '').split(/\s+/);
-                let line = '';
-                let currentY = y;
+                let line = '', currentY = y;
                 words.forEach(word => {
                     const testLine = line ? `${line} ${word}` : word;
-                    const testWidth = doc.getTextWidth(testLine);
-                    if (testWidth > maxWidth && line) {
+                    if (doc.getTextWidth(testLine) > maxWidth && line) {
                         doc.text(line, x, currentY);
                         line = word;
                         currentY += lineHeight;
-                    } else {
-                        line = testLine;
-                    }
+                    } else line = testLine;
                 });
-                if (line) {
-                    doc.text(line, x, currentY);
-                }
+                if (line) doc.text(line, x, currentY);
                 return currentY + lineHeight;
             };
 
-            doc.setFont('helvetica', 'bold');
-            doc.setFontSize(16);
-            doc.text('IRD-Style Supporting Evidence Report', marginX, cursorY);
-            cursorY += 24;
-            doc.setFont('helvetica', 'normal');
-            doc.setFontSize(10);
-            cursorY = addWrappedText(`Generated from filtered CSV browser rows on ${new Date().toLocaleString()}`, marginX, cursorY, pageWidth - marginX * 2, 10);
-            cursorY = addWrappedText(`Rows: ${visibleRows.length} | Income: ${formatCurrencyValue(incSum)} | Expense: ${formatCurrencyValue(expSum)} | Net: ${formatCurrencyValue(netCalc)}`, marginX, cursorY, pageWidth - marginX * 2, 10);
-            cursorY += 8;
-            doc.setFont('helvetica', 'bold');
-            doc.text('Filtered Ledger Entries', marginX, cursorY);
-            cursorY += 12;
-            doc.setFont('helvetica', 'normal');
+            // Enhanced Section Header
+            const drawSectionHeader = (title, y) => {
+                doc.setFillColor(241, 245, 249);
+                doc.roundedRect(marginX, y - 14, pageWidth - marginX * 2, 28, 4, 4, 'F');
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(12);
+                doc.setTextColor(30, 41, 59);
+                doc.text(title, marginX + 10, y + 5);
+                doc.setTextColor(0, 0, 0);
+            };
 
+            // Main Report Header
+            doc.setFillColor(30, 58, 138); // Deep Indigo
+            doc.rect(0, 0, pageWidth, 110, 'F');
+            
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(24);
+            doc.setTextColor(255, 255, 255);
+            doc.text('Data Integrity Export', marginX, 50);
+            
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(11);
+            doc.setTextColor(199, 210, 254);
+            doc.text(`Generated on ${new Date().toLocaleString()}`, marginX, 70);
+            
+            doc.setFontSize(10);
+            doc.text(`Records: ${visibleRows.length}  |  Income: ${formatCurrencyValue(incSum)}  |  Expense: ${formatCurrencyValue(expSum)}  |  Net: ${formatCurrencyValue(netCalc)}`, marginX, 90);
+            
+            cursorY = 140;
+            doc.setTextColor(0, 0, 0);
+            drawSectionHeader('Filtered Ledger Entries Data Grid', cursorY);
+            cursorY += 35;
+
+            // Table Header Row
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(10);
+            doc.setTextColor(100, 116, 139);
+            doc.text('Date', marginX, cursorY);
+            doc.text('Type', marginX + 70, cursorY);
+            doc.text('Category', marginX + 140, cursorY);
+            doc.text('Amount', pageWidth - marginX - doc.getTextWidth('Amount'), cursorY);
+            cursorY += 10;
+            
+            // Draw a subtle line under headers
+            doc.setDrawColor(226, 232, 240);
+            doc.setLineWidth(1);
+            doc.line(marginX, cursorY, pageWidth - marginX, cursorY);
+            cursorY += 15;
+
+            // Render Rows
             visibleRows.forEach(tx => {
-                const line = `${tx.date} | ${tx.type} | ${tx.category || '—'} | ${tx.description || '—'} | ${formatCurrencyValue(tx.amount)}`;
-                cursorY = addWrappedText(line, marginX, cursorY, pageWidth - marginX * 2, 9);
-                if (cursorY > pageHeight - 80) {
+                doc.setFont('helvetica', 'normal');
+                doc.setFontSize(10);
+                doc.setTextColor(51, 65, 85);
+                
+                doc.text(tx.date, marginX, cursorY);
+                doc.setTextColor(tx.type === 'Income' ? 16 : 239, tx.type === 'Income' ? 185 : 68, tx.type === 'Income' ? 129 : 68); // Colorize type
+                doc.text(tx.type, marginX + 70, cursorY);
+                doc.setTextColor(51, 65, 85);
+                
+                // Truncate Category if too long
+                let catText = tx.category || '—';
+                if(doc.getTextWidth(catText) > 120) catText = catText.substring(0, 18) + '...';
+                doc.text(catText, marginX + 140, cursorY);
+
+                const amountText = formatCurrencyValue(tx.amount);
+                doc.text(amountText, pageWidth - marginX - doc.getTextWidth(amountText), cursorY);
+                
+                cursorY += 12;
+                
+                // Draw description on next line, indented
+                doc.setFontSize(9);
+                doc.setTextColor(148, 163, 184);
+                cursorY = addWrappedText(`Note: ${tx.description || '—'}`, marginX + 70, cursorY, pageWidth - marginX * 2 - 70, 9);
+                
+                // Subtle divider
+                doc.setDrawColor(241, 245, 249);
+                doc.line(marginX, cursorY - 5, pageWidth - marginX, cursorY - 5);
+                cursorY += 10;
+
+                // Page Break handling
+                if (cursorY > pageHeight - 60) {
                     doc.addPage();
                     cursorY = marginY;
+                    drawSectionHeader('Filtered Ledger Entries (Continued)', cursorY);
+                    cursorY += 35;
                 }
             });
 
+            // Handle Appendices natively in jsPDF
             const attachmentRows = visibleRows.filter(tx => tx.attachmentBase64);
             attachmentRows.forEach((tx, index) => {
-                if (cursorY > pageHeight - 120) {
-                    doc.addPage();
-                    cursorY = marginY;
-                }
                 doc.addPage();
                 cursorY = marginY;
-                doc.setFont('helvetica', 'bold');
-                doc.setFontSize(14);
-                doc.text(`Supporting Proof ${index + 1}`, marginX, cursorY);
-                cursorY += 18;
+                
+                drawSectionHeader(`Supporting Digital Asset ${index + 1}`, cursorY);
+                cursorY += 30;
+                
                 doc.setFont('helvetica', 'normal');
-                doc.setFontSize(10);
-                cursorY = addWrappedText(`${tx.date} • ${tx.category || '—'} • ${tx.description || '—'}`, marginX, cursorY, pageWidth - marginX * 2, 10);
+                doc.setTextColor(71, 85, 105);
+                cursorY = addWrappedText(`Ref: [${tx.date}] ${tx.category || '—'} - ${tx.description || '—'}`, marginX, cursorY, pageWidth - marginX * 2, 11);
+                
+                cursorY += 10;
+
                 if (tx.attachmentBase64.startsWith('data:application/pdf;')) {
-                    cursorY = addWrappedText('PDF attachment included as reference; the browser export stores the source in the ledger entry.', marginX, cursorY, pageWidth - marginX * 2, 10);
+                    doc.setFillColor(248, 250, 252);
+                    doc.roundedRect(marginX, cursorY, pageWidth - marginX * 2, 80, 8, 8, 'F');
+                    doc.setTextColor(71, 85, 105);
+                    addWrappedText('A PDF attachment is included for this record. View the interactive dashboard to render the full PDF source.', marginX + 20, cursorY + 35, pageWidth - marginX * 2 - 40, 10, true);
                 } else {
                     try {
                         const imageWidth = pageWidth - marginX * 2;
-                        const imageHeight = Math.min(pageHeight - cursorY - 40, 500);
-                        doc.addImage(tx.attachmentBase64, 'JPEG', marginX, cursorY, imageWidth, imageHeight);
-                        cursorY += imageHeight + 10;
+                        const availableHeight = pageHeight - cursorY - 40;
+                        const img = new Image();
+                        img.src = tx.attachmentBase64;
+                        
+                        const ratio = (img.width && img.height) ? img.width / img.height : 1;
+                        let targetWidth = imageWidth;
+                        let targetHeight = targetWidth / ratio;
+                        
+                        if (targetHeight > availableHeight) {
+                            targetHeight = availableHeight;
+                            targetWidth = targetHeight * ratio;
+                        }
+                        
+                        const centeredX = marginX + (imageWidth - targetWidth) / 2;
+                        doc.addImage(tx.attachmentBase64, 'JPEG', centeredX, cursorY, targetWidth, targetHeight);
+                        
+                        // Add image border
+                        doc.setDrawColor(203, 213, 225);
+                        doc.rect(centeredX, cursorY, targetWidth, targetHeight, 'S');
+
                     } catch (error) {
-                        cursorY = addWrappedText('The attached image could not be rendered in this PDF export.', marginX, cursorY, pageWidth - marginX * 2, 10);
+                        addWrappedText('The attached image could not be rendered safely in this PDF export.', marginX, cursorY, pageWidth - marginX * 2, 10);
                     }
                 }
             });
 
-            doc.save(`IRD_Filtered_Export_${new Date().toISOString().split('T')[0]}.pdf`);
+            doc.save(`FinLedger_Export_${new Date().toISOString().split('T')[0]}.pdf`);
         }
 
         async function generateTaxReportPDF() {
@@ -1958,58 +2006,70 @@
             const taxConfigRateValue = parseFloat(document.getElementById("taxRateInput").value || 0);
             const computedTaxVal = netCalc > 0 ? netCalc * (taxConfigRateValue / 100) : 0;
 
+            // Define modern, inline CSS variables for the layout
             let pdfStructuralContentString = `
-                <div style="font-family: Arial, sans-serif; color: #1e293b;">
-                    <div style="border-b: 4px solid #312e81; padding-bottom: 16px; margin-bottom: 24px;">
-                        <h1 style="font-size: 26px; font-weight: bold; color: #1e3a8a; margin: 0;">FinLedger Corporate Tax Report Audit</h1>
-                        <p style="font-size: 12px; color: #64748b; margin: 4px 0 0 0;">Generated Operational Statement Pipeline — Runtime Period: ${new Date().toLocaleString()}</p>
+                <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #0f172a; padding: 20px;">
+                    
+                    <!-- Premium Header -->
+                    <div style="display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 3px solid #e2e8f0; padding-bottom: 20px; margin-bottom: 30px;">
+                        <div>
+                            <h1 style="font-size: 32px; font-weight: 800; color: #1e3a8a; margin: 0; letter-spacing: -0.5px;">FinLedger</h1>
+                            <p style="font-size: 14px; font-weight: 500; color: #64748b; margin: 6px 0 0 0; text-transform: uppercase; letter-spacing: 1px;">Corporate Tax Report & Audit</p>
+                        </div>
+                        <div style="text-align: right;">
+                            <p style="font-size: 11px; font-weight: 700; color: #94a3b8; margin: 0; text-transform: uppercase;">Generated On</p>
+                            <p style="font-size: 14px; font-weight: 600; color: #334155; margin: 4px 0 0 0;">${new Date().toLocaleString()}</p>
+                        </div>
                     </div>
 
-                    <div style="margin-bottom: 32px;">
-                        <h3 style="font-size: 14px; font-weight: bold; text-transform: uppercase; color: #475569; letter-spacing: 0.5px; margin-bottom: 12px;">Financial Position Ledger Abstract</h3>
-                        <table style="width: 100%; border-collapse: collapse; text-align: left;">
-                            <thead>
-                                <tr style="background-color: #f8fafc;">
-                                    <th style="padding: 10px; font-size: 11px; font-weight: bold; color: #627d98; border: 1px solid #e2e8f0;">Total Aggregate Income</th>
-                                    <th style="padding: 10px; font-size: 11px; font-weight: bold; color: #627d98; border: 1px solid #e2e8f0;">Total Operational Expense</th>
-                                    <th style="padding: 10px; font-size: 11px; font-weight: bold; color: #627d98; border: 1px solid #e2e8f0;">Net Accounting Margin</th>
-                                    <th style="padding: 10px; font-size: 11px; font-weight: bold; color: #627d98; border: 1px solid #e2e8f0;">Assessed Tax Liability (${taxConfigRateValue}%)</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr>
-                                    <td style="padding: 12px; font-size: 16px; font-weight: bold; color: #10b981; border: 1px solid #e2e8f0;">${formatCurrencyValue(incSum)}</td>
-                                    <td style="padding: 12px; font-size: 16px; font-weight: bold; color: #dd2c2c; border: 1px solid #e2e8f0;">${formatCurrencyValue(expSum)}</td>
-                                    <td style="padding: 12px; font-size: 16px; font-weight: bold; color: ${netCalc >= 0 ? '#0f172a' : '#dd2c2c'}; border: 1px solid #e2e8f0;">${formatCurrencyValue(netCalc)}</td>
-                                    <td style="padding: 12px; font-size: 16px; font-weight: bold; color: #b45309; border: 1px solid #e2e8f0; background-color: #fffbeb;">${formatCurrencyValue(computedTaxVal)}</td>
-                                </tr>
-                            </tbody>
-                        </table>
+                    <!-- KPI Cards Dashboard Style -->
+                    <div style="margin-bottom: 40px;">
+                        <h3 style="font-size: 13px; font-weight: 700; text-transform: uppercase; color: #475569; letter-spacing: 0.5px; margin-bottom: 16px;">Financial Position Abstract</h3>
+                        <div style="display: flex; gap: 16px;">
+                            <div style="flex: 1; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px;">
+                                <p style="font-size: 11px; font-weight: 600; color: #64748b; text-transform: uppercase; margin: 0 0 8px 0;">Total Income</p>
+                                <p style="font-size: 20px; font-weight: 700; color: #10b981; margin: 0;">${formatCurrencyValue(incSum)}</p>
+                            </div>
+                            <div style="flex: 1; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px;">
+                                <p style="font-size: 11px; font-weight: 600; color: #64748b; text-transform: uppercase; margin: 0 0 8px 0;">Total Expense</p>
+                                <p style="font-size: 20px; font-weight: 700; color: #ef4444; margin: 0;">${formatCurrencyValue(expSum)}</p>
+                            </div>
+                            <div style="flex: 1; background-color: ${netCalc >= 0 ? '#ecfdf5' : '#fef2f2'}; border: 1px solid ${netCalc >= 0 ? '#a7f3d0' : '#fecaca'}; border-radius: 8px; padding: 16px;">
+                                <p style="font-size: 11px; font-weight: 600; color: ${netCalc >= 0 ? '#059669' : '#dc2626'}; text-transform: uppercase; margin: 0 0 8px 0;">Net Margin</p>
+                                <p style="font-size: 20px; font-weight: 700; color: ${netCalc >= 0 ? '#047857' : '#b91c1c'}; margin: 0;">${formatCurrencyValue(netCalc)}</p>
+                            </div>
+                            <div style="flex: 1; background-color: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 16px;">
+                                <p style="font-size: 11px; font-weight: 600; color: #d97706; text-transform: uppercase; margin: 0 0 8px 0;">Tax Liability (${taxConfigRateValue}%)</p>
+                                <p style="font-size: 20px; font-weight: 700; color: #b45309; margin: 0;">${formatCurrencyValue(computedTaxVal)}</p>
+                            </div>
+                        </div>
                     </div>
 
+                    <!-- Modern Reconciled Table -->
                     <div style="margin-bottom: 32px;">
-                        <h3 style="font-size: 14px; font-weight: bold; text-transform: uppercase; color: #475569; letter-spacing: 0.5px; margin-bottom: 12px;">Reconciled Transaction Journal Records (${filteredTransactionsCache.length} rows)</h3>
+                        <h3 style="font-size: 13px; font-weight: 700; text-transform: uppercase; color: #475569; letter-spacing: 0.5px; margin-bottom: 16px;">Reconciled Transaction Journal (${filteredTransactionsCache.length} records)</h3>
                         <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 11px;">
                             <thead>
-                                <tr style="background-color: #f1f5f9; color: #475569; font-weight: bold;">
-                                    <th style="padding: 8px; border: 1px solid #e2e8f0;">Execution Date</th>
-                                    <th style="padding: 8px; border: 1px solid #e2e8f0;">Type</th>
-                                    <th style="padding: 8px; border: 1px solid #e2e8f0;">Category Allocation</th>
-                                    <th style="padding: 8px; border: 1px solid #e2e8f0;">Line Trace Description</th>
-                                    <th style="padding: 8px; border: 1px solid #e2e8f0; text-align: right;">Value Amount</th>
+                                <tr>
+                                    <th style="padding: 12px 8px; border-bottom: 2px solid #cbd5e1; color: #475569; font-weight: 700; text-transform: uppercase;">Date</th>
+                                    <th style="padding: 12px 8px; border-bottom: 2px solid #cbd5e1; color: #475569; font-weight: 700; text-transform: uppercase;">Type</th>
+                                    <th style="padding: 12px 8px; border-bottom: 2px solid #cbd5e1; color: #475569; font-weight: 700; text-transform: uppercase;">Category</th>
+                                    <th style="padding: 12px 8px; border-bottom: 2px solid #cbd5e1; color: #475569; font-weight: 700; text-transform: uppercase;">Description</th>
+                                    <th style="padding: 12px 8px; border-bottom: 2px solid #cbd5e1; color: #475569; font-weight: 700; text-transform: uppercase; text-align: right;">Amount</th>
                                 </tr>
                             </thead>
                             <tbody>
             `;
 
-            filteredTransactionsCache.forEach(tx => {
+            filteredTransactionsCache.forEach((tx, index) => {
+                const rowBg = index % 2 === 0 ? '#ffffff' : '#f8fafc';
                 pdfStructuralContentString += `
-                    <tr style="color: #334155;">
-                        <td style="padding: 7px; border: 1px solid #e2e8f0; font-weight: 500;">${tx.date}</td>
-                        <td style="padding: 7px; border: 1px solid #e2e8f0; font-weight: bold; color: ${tx.type === 'Income' ? '#10b981' : '#ef4444'};">${tx.type}</td>
-                        <td style="padding: 7px; border: 1px solid #e2e8f0; font-weight: 500;">${tx.category}</td>
-                        <td style="padding: 7px; border: 1px solid #e2e8f0; color: #64748b;">${escapeHtmlString(tx.description || '—')}</td>
-                        <td style="padding: 7px; border: 1px solid #e2e8f0; text-align: right; font-weight: bold; color: ${tx.type === 'Income' ? '#10b981' : '#0f172a'};">${formatCurrencyValue(tx.amount)}</td>
+                    <tr style="background-color: ${rowBg};">
+                        <td style="padding: 10px 8px; border-bottom: 1px solid #e2e8f0; font-weight: 500; color: #334155;">${tx.date}</td>
+                        <td style="padding: 10px 8px; border-bottom: 1px solid #e2e8f0; font-weight: 600; color: ${tx.type === 'Income' ? '#10b981' : '#ef4444'};">${tx.type}</td>
+                        <td style="padding: 10px 8px; border-bottom: 1px solid #e2e8f0; font-weight: 500; color: #334155;">${tx.category}</td>
+                        <td style="padding: 10px 8px; border-bottom: 1px solid #e2e8f0; color: #64748b;">${escapeHtmlString(tx.description || '—')}</td>
+                        <td style="padding: 10px 8px; border-bottom: 1px solid #e2e8f0; text-align: right; font-weight: 600; color: ${tx.type === 'Income' ? '#10b981' : '#0f172a'};">${formatCurrencyValue(tx.amount)}</td>
                     </tr>
                 `;
             });
@@ -2022,28 +2082,32 @@
             `;
 
             let activePhysicalReceiptsAppendedCount = 0;
-            filteredTransactionsCache.forEach((tx, idx) => {
+            filteredTransactionsCache.forEach((tx) => {
                 if (tx.attachmentBase64) {
                     activePhysicalReceiptsAppendedCount++;
                     pdfStructuralContentString += `
-                        <div style="page-break-before: always; padding-top: 20px;">
-                            <div style="border-b: 2px solid #64748b; padding-bottom: 8px; margin-bottom: 20px;">
-                                <h3 style="font-size: 14px; font-weight: bold; color: #1e293b; margin: 0;">Audit Proof Appendix Document #${activePhysicalReceiptsAppendedCount}</h3>
-                                <p style="font-size: 11px; color: #64748b; margin: 2px 0 0 0;">Linked Transaction: [${tx.date}] ${tx.category} - ${formatCurrencyValue(tx.amount)} (${escapeHtmlString(tx.description || 'No description')})</p>
+                        <div style="page-break-before: always; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 20px;">
+                            <div style="border-bottom: 2px solid #e2e8f0; padding-bottom: 12px; margin-bottom: 24px;">
+                                <h3 style="font-size: 18px; font-weight: 700; color: #1e3a8a; margin: 0;">Audit Proof Appendix Document #${activePhysicalReceiptsAppendedCount}</h3>
+                                <p style="font-size: 12px; color: #64748b; margin: 4px 0 0 0;">
+                                    <strong>Linked Transaction:</strong> [${tx.date}] ${tx.category} &mdash; ${formatCurrencyValue(tx.amount)}<br/>
+                                    <strong>Description:</strong> ${escapeHtmlString(tx.description || 'No description')}
+                                </p>
                             </div>
                     `;
 
                     if (tx.attachmentBase64.startsWith("data:application/pdf;")) {
                         pdfStructuralContentString += `
-                            <div style="padding: 40px; border: 1px dashed #cbd5e1; background-color: #f8fafc; text-align: center; border-radius: 8px;">
-                                <p style="font-size: 14px; font-weight: bold; color: #475569; margin: 0;">Embedded Binary PDF Asset Source Container</p>
-                                <p style="font-size: 12px; color: #94a3b8; margin: 8px 0 0 0;">Digital references are natively embedded inside the parent CSV file block matrix array dataset stream structures.</p>
+                            <div style="padding: 40px; border: 2px dashed #cbd5e1; background-color: #f8fafc; text-align: center; border-radius: 12px; margin-top: 20px;">
+                                <svg style="width: 48px; height: 48px; color: #94a3b8; margin-bottom: 12px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
+                                <p style="font-size: 16px; font-weight: 700; color: #475569; margin: 0;">Embedded PDF Asset Source</p>
+                                <p style="font-size: 13px; color: #64748b; margin: 8px 0 0 0; max-width: 400px; margin-left: auto; margin-right: auto;">This digital reference is natively embedded inside the parent CSV file block matrix array dataset stream.</p>
                             </div>
                         `;
                     } else {
                         pdfStructuralContentString += `
-                            <div style="text-align: center; background-color: #f8fafc; border: 1px solid #e2e8f0; padding: 16px; border-radius: 8px;">
-                                <img src="${tx.attachmentBase64}" style="max-width: 100%; max-height: 750px; object-contain: scale-down; border-radius: 4px; shadow: 0 4px 6px -1px rgba(0,0,0,0.1);" />
+                            <div style="text-align: center; background-color: #f1f5f9; border: 1px solid #cbd5e1; padding: 24px; border-radius: 12px; box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.03);">
+                                <img src="${tx.attachmentBase64}" style="max-width: 100%; max-height: 800px; object-fit: contain; border-radius: 8px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);" />
                             </div>
                         `;
                     }
@@ -2053,8 +2117,8 @@
 
             targetPrintWrapper.innerHTML = pdfStructuralContentString;
             const printingConfigurationOptionsContainer = {
-                margin: 0.5,
-                filename: `Corporate_Tax_Reconciliation_Ledger_Report_${new Date().toISOString().split('T')[0]}.pdf`,
+                margin: 0.4,
+                filename: `FinLedger_Corporate_Tax_Report_${new Date().toISOString().split('T')[0]}.pdf`,
                 image: { type: 'jpeg', quality: 0.98 },
                 html2canvas: { scale: 2, useCORS: true, logging: false },
                 jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
