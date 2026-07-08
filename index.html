@@ -467,10 +467,11 @@
         }
 
         async function commitCsvToGitHub() {
+            // This function sends a repository_dispatch event with the CSV content.
+            // The workflow `.github/workflows/update-csv-from-dispatch.yml` will apply the change.
             const token = getGitHubToken();
-            if (!token) {
-                return;
-            }
+            if (!token) return;
+
             const csvRows = [DEFAULT_CSV_HEADERS];
             transactionsState.forEach(tx => {
                 csvRows.push([
@@ -486,51 +487,47 @@
 
             const csvContent = buildRFC4180CSVString(csvRows);
             const contentBase64 = btoa(unescape(encodeURIComponent(csvContent)));
-            const sha = await fetchGitHubFileSha();
-            if (!sha) {
-                return;
-            }
 
-            const updateResponse = await fetch(`${GITHUB_API_BASE}/repos/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/contents/${encodeURIComponent(GITHUB_FILE_PATH)}?branch=${GITHUB_BRANCH}`, {
-                method: 'PUT',
+            const dispatchUrl = `${GITHUB_API_BASE}/repos/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/dispatches`;
+
+            const resp = await fetch(dispatchUrl, {
+                method: 'POST',
                 headers: {
                     'Authorization': `token ${token}`,
-                    'Accept': 'application/vnd.github+json',
+                    'Accept': 'application/vnd.github.everest-preview+json',
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    message: 'Update transactions_ledger.csv from dashboard',
-                    content: contentBase64,
-                    sha,
-                    branch: GITHUB_BRANCH
+                    event_type: 'update_csv',
+                    client_payload: { csv_base64: contentBase64 }
                 })
             });
 
-            if (!updateResponse.ok) {
-                const body = await updateResponse.text();
-                throw new Error(`GitHub update failed: ${updateResponse.status} ${updateResponse.statusText} ${body}`);
+            if (!resp.ok) {
+                const body = await resp.text();
+                throw new Error(`Dispatch failed: ${resp.status} ${resp.statusText} ${body}`);
             }
 
-            const result = await updateResponse.json();
-            alert('Successfully updated transactions_ledger.csv on GitHub.');
-            return result;
+            alert('Triggered GitHub workflow to update transactions_ledger.csv.');
+            return true;
         }
 
         function getGitHubToken() {
-            let token = localStorage.getItem('FIN_LEDGER_GITHUB_TOKEN');
-            if (token) {
-                return token;
+            // Try multiple storage keys so you can pre-store a token in localStorage
+            const keys = ['FIN_LEDGER_TRIGGER_TOKEN', 'FIN_LEDGER_GITHUB_TOKEN'];
+            for (const k of keys) {
+                const t = localStorage.getItem(k);
+                if (t) return t.trim();
             }
 
-            token = prompt('Enter your GitHub personal access token with repo permissions:');
+            // Fallback: prompt once and store it under FIN_LEDGER_TRIGGER_TOKEN
+            const token = prompt('Enter your GitHub personal access token with repo permissions (it will be saved in localStorage):');
             if (!token) {
                 alert('GitHub token is required to update the repo file. Your local changes are still saved in the browser.');
                 return null;
             }
-
-            token = token.trim();
-            localStorage.setItem('FIN_LEDGER_GITHUB_TOKEN', token);
-            return token;
+            localStorage.setItem('FIN_LEDGER_TRIGGER_TOKEN', token.trim());
+            return token.trim();
         }
 
         async function fetchGitHubFileSha() {
