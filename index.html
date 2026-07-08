@@ -1,0 +1,1219 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-slate-50">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enterprise Financial Tracker Dashboard</title>
+    <!-- Tailwind CSS Play CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- html2pdf.js CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <style>
+        /* Hide scrollbar utility for clean UX modal viewports */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+</head>
+<body class="h-full flex flex-col font-sans antialiased text-slate-900">
+
+    <!-- Top Navigation Header -->
+    <header class="bg-indigo-900 text-white shrink-0 shadow-md">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="p-2 bg-indigo-600 rounded-lg shadow-inner">
+                    <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                </div>
+                <div>
+                    <h1 class="text-lg font-bold tracking-tight">FinLedger</h1>
+                    <p class="text-xs text-indigo-200">Internal Financial Control Dashboard</p>
+                </div>
+            </div>
+            <div class="flex items-center space-x-4">
+                <div class="text-right hidden sm:block">
+                    <p class="text-xs text-indigo-300">Workspace Status</p>
+                    <p id="syncStatus" class="text-sm font-medium text-emerald-400 flex items-center justify-end gap-1">
+                        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> Local Runtime Active
+                    </p>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Workspace Container -->
+    <main class="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 flex flex-col gap-6 overflow-y-auto">
+        
+        <!-- Data Management & Initialization Toolbar -->
+        <section class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+                <h2 class="text-sm font-semibold text-slate-700 uppercase tracking-wider">Data Synchronization</h2>
+                <p class="text-xs text-slate-500">Import your ledger repo CSV file to begin, or export updates for your GitHub commit.</p>
+            </div>
+            <div class="flex flex-wrap items-center gap-3">
+                <label class="flex items-center justify-center px-4 py-2 border border-slate-300 rounded-lg shadow-sm text-sm font-medium text-slate-700 bg-white hover:bg-slate-50 cursor-pointer transition">
+                    <svg class="w-4 h-4 mr-2 text-slate-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
+                    </svg>
+                    Import transactions.csv
+                    <input type="file" id="csvFileInput" accept=".csv" class="hidden" onchange="handleCSVImport(event)">
+                </label>
+                <button onclick="exportCSV()" class="inline-flex items-center px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg shadow-sm transition">
+                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                    </svg>
+                    Export Updated CSV
+                </button>
+            </div>
+        </section>
+
+        <!-- Dynamic KPI Financial Metrics Bar -->
+        <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <!-- Total Income Card -->
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex items-center justify-between">
+                <div>
+                    <p class="text-sm font-medium text-slate-500">Total Income</p>
+                    <p id="kpiIncome" class="text-2xl font-bold text-slate-900 mt-1">$0.00</p>
+                </div>
+                <div class="p-3 bg-emerald-50 text-emerald-600 rounded-xl">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg>
+                </div>
+            </div>
+            <!-- Total Expenses Card -->
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex items-center justify-between">
+                <div>
+                    <p class="text-sm font-medium text-slate-500">Total Expenses</p>
+                    <p id="kpiExpenses" class="text-2xl font-bold text-slate-900 mt-1">$0.00</p>
+                </div>
+                <div class="p-3 bg-rose-50 text-rose-600 rounded-xl"><svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 17h8m0 0v-8m0 8l-8-8-4 4-6-6"></path></svg></div>
+            </div>
+            <!-- Net Profit Card -->
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex items-center justify-between">
+                <div>
+                    <p class="text-sm font-medium text-slate-500">Net Profit</p>
+                    <p id="kpiNet" class="text-2xl font-bold text-slate-900 mt-1">$0.00</p>
+                </div>
+                <div id="kpiNetIconContainer" class="p-3 bg-slate-50 text-slate-600 rounded-xl"><svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2h2a2 2 0 002-2zm12 0v-3a2 2 0 00-2-2h-2a2 2 0 00-2 2v3a2 2 0 002 2h2a2 2 0 002-2z"></path></svg></div>
+            </div>
+            <!-- Dynamic Tax Liability Assessment Card -->
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm font-medium text-slate-500">Tax Liability Est.</p>
+                        <p id="kpiTax" class="text-2xl font-bold text-slate-900 mt-1">$0.00</p>
+                    </div>
+                    <div class="p-3 bg-amber-50 text-amber-600 rounded-xl"><svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z"></path></svg></div>
+                </div>
+                <div class="mt-3 flex items-center justify-between gap-2 border-t border-slate-100 pt-2">
+                    <label for="taxRateInput" class="text-xs text-slate-500 font-medium">Flat Configuration Rate:</label>
+                    <div class="flex items-center space-x-1">
+                        <input type="number" id="taxRateInput" value="21" min="0" max="100" class="w-12 text-right bg-slate-50 border border-slate-300 rounded text-xs font-semibold px-1 py-0.5 focus:outline-none focus:border-indigo-500 text-slate-700" onchange="updateMetrics()">
+                        <span class="text-xs font-medium text-slate-500">%</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Two-Column Interactive Layout Block -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+            
+            <!-- Left Grid Column: Transaction Input Stream -->
+            <section class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 flex flex-col gap-4">
+                <div>
+                    <h2 class="text-base font-bold text-slate-900">Log System Entry</h2>
+                    <p class="text-xs text-slate-500">Input standard metadata and upload verifiable document stream values.</p>
+                </div>
+                <form id="entryForm" onsubmit="handleFormSubmit(event)" class="space-y-4">
+                    <div>
+                        <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">Date</label>
+                        <input type="date" id="formDate" required class="w-full bg-slate-50 border border-slate-300 rounded-lg text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">Transaction Type</label>
+                        <select id="formType" required onchange="populateCategories()" class="w-full bg-slate-50 border border-slate-300 rounded-lg text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition">
+                            <option value="Income">Income (+)</option>
+                            <option value="Expense">Expense (-)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">Category Allocation</label>
+                        <select id="formCategory" required class="w-full bg-slate-50 border border-slate-300 rounded-lg text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition"></select>
+                    </div>
+                    <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <div>
+                            <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">Nature</label>
+                            <select id="formNature" class="w-full bg-slate-50 border border-slate-300 rounded-lg text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition">
+                                <option value="Real">Real</option>
+                                <option value="Non-Real">Non-Real</option>
+                            </select>
+                        </div>
+                        <div class="flex items-center justify-between gap-3">
+                            <button type="button" onclick="openCategoryManager()" class="inline-flex items-center px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg transition">
+                                Manage categories
+                            </button>
+                            <p class="text-xs text-slate-500">Open a separate window to add, rename, or delete categories.</p>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">Amount (HKD)</label>
+                        <input type="number" step="0.01" min="0.01" id="formAmount" required placeholder="0.00" class="w-full bg-slate-50 border border-slate-300 rounded-lg text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">Audit Log Description</label>
+                        <textarea id="formDescription" rows="2" placeholder="Provide descriptive context contextually matching references..." class="w-full bg-slate-50 border border-slate-300 rounded-lg text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition"></textarea>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">Receipt / Invoice Digital Asset Proof</label>
+                        <div class="mt-1 flex justify-center px-4 py-4 border-2 border-slate-300 border-dashed rounded-lg bg-slate-50 hover:bg-slate-100 transition cursor-pointer relative">
+                            <div class="space-y-1 text-center pointer-events-none">
+                                <svg class="mx-auto h-8 w-8 text-slate-400" stroke="currentColor" fill="none" viewBox="0 0 48 48">
+                                    <path d="M28 8H12a4 4 0 00-4 4v20a4 4 0 004 4h16a4 4 0 004-4V12a4 4 0 00-4-4z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                                    <path d="M32 16L24 24l-4-4-8 8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                                </svg>
+                                <div class="text-xs text-slate-600">
+                                    <span id="fileUploadLabel" class="font-medium text-indigo-600">Upload asset file</span> or drag/drop
+                                </div>
+                                <p class="text-[10px] text-slate-400">PDF, PNG, JPG formats up to 5MB</p>
+                            </div>
+                            <input type="file" id="formAttachment" accept="image/*,.pdf" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onchange="handleFileSelection(event)">
+                        </div>
+                        <div id="attachmentPreviewContainer" class="mt-2 hidden flex items-center justify-between bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100">
+                            <span id="attachmentFileName" class="text-xs text-indigo-700 truncate max-w-[80%] font-medium">file.png</span>
+                            <button type="button" onclick="clearSelectedAttachment()" class="text-rose-500 hover:text-rose-700 text-xs font-bold">&times;</button>
+                        </div>
+                    </div>
+                    <button id="submitButton" type="submit" class="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg shadow font-medium text-sm transition">
+                        Commit Entry to Ledger Row
+                    </button>
+                    <button id="cancelEditBtn" type="button" onclick="cancelEdit()" class="hidden w-full py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg shadow font-medium text-sm transition">
+                        Cancel Edit
+                    </button>
+                </form>
+            </section>
+
+            <!-- Right Grid Column: Data Analytical Summary & Visual Trend Panel -->
+            <section class="lg:col-span-2 bg-white rounded-xl shadow-sm border border-slate-200 p-6 flex flex-col gap-4">
+                <div>
+                    <h2 class="text-base font-bold text-slate-900">Performance Visualization</h2>
+                    <p class="text-xs text-slate-500">Aggregated trend mapping contrasting processing flows across system timelines.</p>
+                </div>
+                <div class="w-full relative h-64 md:h-80">
+                    <canvas id="trendChart"></canvas>
+                </div>
+            </section>
+        </div>
+
+        <!-- Ledger History Browsing, Multi-Filtering & Processing Area -->
+        <section class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
+            <div class="p-6 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-50/50">
+                <div>
+                    <h2 class="text-base font-bold text-slate-900">Ledger Entry Registry</h2>
+                    <p class="text-xs text-slate-500">Filter, browse, and output documentation for internal standard reconciliation procedures.</p>
+                </div>
+                <button onclick="generateTaxReportPDF()" class="inline-flex items-center px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium rounded-lg shadow-sm transition self-start md:self-auto">
+                    <svg class="w-4 h-4 mr-2 text-indigo-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                    </svg>
+                    Generate Tax Report PDF
+                </button>
+            </div>
+
+            <!-- Context Filter Toolbar controls -->
+            <div class="p-4 border-b border-slate-100 bg-white grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                <div>
+                    <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">Search Context</label>
+                    <input type="text" id="filterSearch" placeholder="Description keywords..." oninput="processFilterView()" class="w-full bg-slate-50 border border-slate-300 rounded-lg text-xs px-2.5 py-1.5 focus:outline-none focus:border-indigo-500">
+                </div>
+                <div>
+                    <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">Flow Category Type</label>
+                    <select id="filterType" onchange="processFilterView()" class="w-full bg-slate-50 border border-slate-300 rounded-lg text-xs px-2.5 py-1.5 focus:outline-none focus:border-indigo-500">
+                        <option value="All">All Types</option>
+                        <option value="Income">Income Entries</option>
+                        <option value="Expense">Expense Entries</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">Categorical Sorting</label>
+                    <select id="filterCategory" onchange="processFilterView()" class="w-full bg-slate-50 border border-slate-300 rounded-lg text-xs px-2.5 py-1.5 focus:outline-none focus:border-indigo-500">
+                        <option value="All">All Categories</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">Start Interval Date</label>
+                    <input type="date" id="filterStartDate" onchange="processFilterView()" class="w-full bg-slate-50 border border-slate-300 rounded-lg text-xs px-2.5 py-1.5 focus:outline-none focus:border-indigo-500">
+                </div>
+                <div>
+                    <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">End Interval Date</label>
+                    <input type="date" id="filterEndDate" onchange="processFilterView()" class="w-full bg-slate-50 border border-slate-300 rounded-lg text-xs px-2.5 py-1.5 focus:outline-none focus:border-indigo-500">
+                </div>
+                <div class="flex items-end">
+                    <button type="button" id="showAllBtn" onclick="toggleShowAllRecords()" class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg shadow font-medium text-sm transition">
+                        Show All Records
+                    </button>
+                </div>
+            </div>
+
+            <!-- Scrollable Dynamic Responsive Table Container -->
+            <div class="overflow-x-auto w-full">
+                <table class="min-w-full divide-y divide-slate-200 text-left text-xs text-slate-600">
+                    <thead class="bg-slate-50 text-[10px] uppercase tracking-wider font-bold text-slate-500">
+                        <tr>
+                            <th class="px-6 py-3">Execution Date</th>
+                            <th class="px-6 py-3">Type</th>
+                            <th class="px-6 py-3">System Category</th>
+                            <th class="px-6 py-3">Nature</th>
+                            <th class="px-6 py-3">Line Description</th>
+                            <th class="px-6 py-3 text-right">Value Amount</th>
+                            <th class="px-6 py-3 text-center">Document Proof</th>
+                            <th class="px-6 py-3 text-center">System Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="ledgerTableBody" class="divide-y divide-slate-100 bg-white">
+                        <!-- Filled Contextually via JavaScript Engine -->
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Pagination Control Bar Overlay component -->
+            <div class="px-6 py-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-xs font-medium text-slate-600">
+                <div id="paginationSummary">Showing 0 to 0 of 0 database entities</div>
+                <div class="flex items-center space-x-2">
+                    <button onclick="changePage(-1)" id="btnPrevPage" class="px-3 py-1 bg-white border border-slate-300 rounded-md hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition">Previous</button>
+                    <span id="pageIndicator" class="font-semibold text-slate-700">Page 1 of 1</span>
+                    <button onclick="changePage(1)" id="btnNextPage" class="px-3 py-1 bg-white border border-slate-300 rounded-md hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition">Next</button>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Global Category Manager Modal -->
+    <dialog id="categoryManagerModal" class="bg-transparent backdrop:bg-slate-900/60 p-4 max-w-3xl w-full focus:outline-none">
+        <div class="bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden flex flex-col max-h-[85vh]">
+            <div class="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                <div>
+                    <h3 id="categoryManagerTitle" class="text-sm font-bold text-slate-800">Category Manager</h3>
+                    <p class="text-xs text-slate-500">Add, rename, or delete categories for Income and Expense.</p>
+                </div>
+                <button onclick="closeCategoryManager()" class="text-slate-400 hover:text-slate-600 font-bold text-xl leading-none">&times;</button>
+            </div>
+            <div class="p-4 overflow-y-auto space-y-4 no-scrollbar">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">Category Type</label>
+                        <select id="categoryManagerType" onchange="renderCategoryManager()" class="w-full bg-slate-50 border border-slate-300 rounded-lg text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition">
+                            <option value="Income">Income</option>
+                            <option value="Expense">Expense</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">New Category Name</label>
+                        <div class="flex gap-2">
+                            <input type="text" id="categoryManagerNewInput" placeholder="Create category" class="flex-1 bg-slate-50 border border-slate-300 rounded-lg text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition">
+                            <button type="button" onclick="addCategoryViaManager()" class="inline-flex items-center px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded-lg transition">Add</button>
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <h4 class="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">Existing Categories</h4>
+                    <div id="categoryManagerList" class="space-y-3"></div>
+                </div>
+            </div>
+        </div>
+    </dialog>
+
+    <!-- Global Asset Modal Overlay Container (View Receipts) -->
+    <div class="hidden">
+        <div id="pdfPrintContainer" class="p-8 text-slate-900 bg-white space-y-8 font-sans">
+            <!-- Programmatically initialized before generating report streams -->
+        </div>
+    </div>
+
+    <!-- System Control Logic Runtime Scripts Block -->
+    <script>
+        // System Data Archetype Schemas & Categorical Rules Lists
+        const categoriesMap = {
+            Income: ["Revenue", "Investment", "Grants", "Subsidy Receipts", "Other Operations Profit"],
+            Expense: ["Marketing", "Salary & Wages", "Software Licensing", "Cloud Architecture infrastructure", "Hardware Assets", "Office Rent", "Legal & Consulting", "Miscellaneous Expenditures"]
+        };
+
+        // Complete Local Reactive State Engine Variables
+        const DEFAULT_CSV_HEADERS = ["Date", "Type", "Category", "Nature", "Amount", "Description", "AttachmentBase64"];
+        let transactionsState = [];
+        let filteredTransactionsCache = [];
+        let chartInstanceReference = null;
+        let base64AssetStringTemp = "";
+        let currentActivePage = 1;
+        const pageRecordsConstraint = 10;
+        let currentCSVString = "";
+        let currentEditRecordId = null;
+        let showAllRecords = false;
+
+        // Form fields initialization and mapping on initialization setup
+        document.addEventListener("DOMContentLoaded", () => {
+            initializeDefaults();
+            loadWorkspaceState();
+            populateCategories();
+            processFilterView();
+        });
+
+        function initializeDefaults() {
+            document.getElementById('formDate').valueAsDate = new Date();
+        }
+
+        // Dynamically populates form category dropdown selection options based on structural data schema context mapping
+        function populateCategories() {
+            const type = document.getElementById("formType").value;
+            const targetSelect = document.getElementById("formCategory");
+            const filterSelect = document.getElementById("filterCategory");
+            
+            // Re-render Form Selection Inputs options configurations
+            targetSelect.innerHTML = "";
+            categoriesMap[type].forEach(cat => {
+                const opt = document.createElement("option");
+                opt.value = cat; opt.textContent = cat;
+                targetSelect.appendChild(opt);
+            });
+
+            // Re-render System Filter Dropdown Configuration arrays arrays parsing logic elements
+            const previouslySelectedFilter = filterSelect.value;
+            filterSelect.innerHTML = '<option value="All">All Categories</option>';
+            const aggregatedAllCategories = [...categoriesMap.Income, ...categoriesMap.Expense];
+            aggregatedAllCategories.forEach(cat => {
+                const opt = document.createElement("option");
+                opt.value = cat; opt.textContent = cat;
+                filterSelect.appendChild(opt);
+            });
+            filterSelect.value = previouslySelectedFilter;
+        }
+
+        // Converts local uploads dynamically into system local assets string memory mappings buffer streams
+        function handleFileSelection(event) {
+            const targetFile = event.target.files[0];
+            if (!targetFile) return;
+
+            if (targetFile.size > 5 * 1024 * 1024) {
+                alert("The attached file exceeds our maximum allowable safety boundary constraint of 5MB.");
+                clearSelectedAttachment();
+                return;
+            }
+
+            const nativeReader = new FileReader();
+            nativeReader.onload = function(e) {
+                base64AssetStringTemp = e.target.result;
+                document.getElementById("attachmentPreviewContainer").classList.remove("hidden");
+                document.getElementById("attachmentFileName").textContent = targetFile.name;
+                document.getElementById("fileUploadLabel").textContent = "File staged successfully";
+            };
+            nativeReader.readAsDataURL(targetFile);
+        }
+
+        function clearSelectedAttachment() {
+            base64AssetStringTemp = "";
+            document.getElementById("formAttachment").value = "";
+            document.getElementById("attachmentPreviewContainer").classList.add("hidden");
+            document.getElementById("attachmentFileName").textContent = "";
+            document.getElementById("fileUploadLabel").textContent = "Upload asset file";
+        }
+
+        // Processing Input submissions logs and mutating structural persistent records state maps arrays arrays
+        function handleFormSubmit(event) {
+            event.preventDefault();
+            const formValues = {
+                date: document.getElementById("formDate").value,
+                type: document.getElementById("formType").value,
+                category: document.getElementById("formCategory").value,
+                nature: document.getElementById("formNature").value,
+                amount: parseFloat(document.getElementById("formAmount").value),
+                description: document.getElementById("formDescription").value.trim(),
+                attachmentBase64: base64AssetStringTemp
+            };
+
+            if (currentEditRecordId) {
+                const recordIndex = transactionsState.findIndex(tx => tx.id === currentEditRecordId);
+                if (recordIndex !== -1) {
+                    transactionsState[recordIndex] = {
+                        ...transactionsState[recordIndex],
+                        ...formValues
+                    };
+                }
+                currentEditRecordId = null;
+                document.getElementById("submitButton").textContent = "Commit Entry to Ledger Row";
+                document.getElementById("cancelEditBtn").classList.add("hidden");
+            } else {
+                const recordRow = {
+                    id: 'tx_row_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+                    ...formValues
+                };
+                transactionsState.unshift(recordRow);
+            }
+
+            saveWorkspaceToLocalStorage();
+            
+            // Clean dynamic parameters states contexts reset loops
+            document.getElementById("formAmount").value = "";
+            document.getElementById("formDescription").value = "";
+            clearSelectedAttachment();
+            initializeDefaults();
+            if (!currentEditRecordId) {
+                document.getElementById("formNature").value = "Real";
+            }
+            processFilterView();
+        }
+
+        function editRecord(recordId) {
+            const targetRecord = transactionsState.find(tx => tx.id === recordId);
+            if (!targetRecord) return;
+
+            currentEditRecordId = recordId;
+            document.getElementById("formDate").value = targetRecord.date;
+            document.getElementById("formType").value = targetRecord.type;
+            populateCategories();
+            document.getElementById("formCategory").value = targetRecord.category;
+            document.getElementById("formNature").value = targetRecord.nature || "Real";
+            document.getElementById("formAmount").value = targetRecord.amount.toFixed(2);
+            document.getElementById("formDescription").value = targetRecord.description;
+            base64AssetStringTemp = targetRecord.attachmentBase64 || "";
+            if (base64AssetStringTemp) {
+                document.getElementById("attachmentPreviewContainer").classList.remove("hidden");
+                document.getElementById("attachmentFileName").textContent = targetRecord.attachmentBase64 ? "Existing attachment" : "";
+                document.getElementById("fileUploadLabel").textContent = "Replace asset file";
+            } else {
+                clearSelectedAttachment();
+            }
+            document.getElementById("submitButton").textContent = "Save Changes";
+            document.getElementById("cancelEditBtn").classList.remove("hidden");
+            document.getElementById("formDate").scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+
+        function cancelEdit() {
+            currentEditRecordId = null;
+            document.getElementById("entryForm").reset();
+            initializeDefaults();
+            clearSelectedAttachment();
+            document.getElementById("submitButton").textContent = "Commit Entry to Ledger Row";
+            document.getElementById("cancelEditBtn").classList.add("hidden");
+            document.getElementById("formNature").value = "Real";
+            populateCategories();
+        }
+
+        function toggleShowAllRecords() {
+            showAllRecords = !showAllRecords;
+            currentActivePage = 1;
+            document.getElementById("showAllBtn").textContent = showAllRecords ? "Show Paginated" : "Show All Records";
+            renderTableRecords();
+        }
+
+        // Processing data caching variables maps array buffers transformations logic structures
+        function saveWorkspaceToLocalStorage() {
+            localStorage.setItem("FIN_LEDGER_STATE", JSON.stringify(transactionsState));
+            localStorage.setItem("FIN_LEDGER_CATEGORIES", JSON.stringify(categoriesMap));
+            const taxRateInputVal = document.getElementById("taxRateInput").value;
+            localStorage.setItem("FIN_LEDGER_TAXRATE", taxRateInputVal);
+            buildAndStoreCSVString();
+        }
+
+        function loadWorkspaceState() {
+            const rawCategories = localStorage.getItem("FIN_LEDGER_CATEGORIES");
+            if (rawCategories) {
+                try { Object.assign(categoriesMap, JSON.parse(rawCategories)); } catch(e) { /* keep defaults */ }
+            }
+
+            const rawCache = localStorage.getItem("FIN_LEDGER_STATE");
+            const rawCSVCache = localStorage.getItem("FIN_LEDGER_CSV");
+
+            if (rawCache) {
+                try { transactionsState = JSON.parse(rawCache); } catch(e) { transactionsState = []; }
+            } else if (rawCSVCache) {
+                const parsedRows = parseRFC4180CSV(rawCSVCache);
+                transactionsState = parseRowsToState(parsedRows);
+            } else {
+                initializeCSVTemplateState();
+            }
+
+            const rawTaxCache = localStorage.getItem("FIN_LEDGER_TAXRATE");
+            if (rawTaxCache) {
+                document.getElementById("taxRateInput").value = rawTaxCache;
+            }
+        }
+
+        function initializeCSVTemplateState() {
+            transactionsState = [];
+            buildAndStoreCSVString();
+            saveWorkspaceToLocalStorage();
+        }
+
+        function parseRowsToState(parsedRows) {
+            const headers = parsedRows.length ? parsedRows[0].map(h => h.trim()) : [];
+            const rows = [];
+
+            for (let r = 1; r < parsedRows.length; r++) {
+                const row = parsedRows[r];
+                if (row.length < 5) continue;
+                rows.push({
+                    id: 'tx_row_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5) + '_' + r,
+                    date: row[headers.indexOf("Date")] || new Date().toISOString().split('T')[0],
+                    type: row[headers.indexOf("Type")] || "Expense",
+                    category: row[headers.indexOf("Category")] || "Miscellaneous Expenditures",
+                    nature: row[headers.indexOf("Nature")] || "Real",
+                    amount: parseFloat(row[headers.indexOf("Amount")] || 0),
+                    description: row[headers.indexOf("Description")] || "",
+                    attachmentBase64: row[headers.indexOf("AttachmentBase64")] || ""
+                });
+            }
+
+            return rows;
+        }
+
+        function addCustomCategory(categoryText) {
+            const type = document.getElementById("formType").value;
+            const customInput = document.getElementById("customCategoryInput");
+            const customValue = categoryText ? categoryText.trim() : customInput.value.trim();
+            if (!customValue) return;
+
+            if (!categoriesMap[type].includes(customValue)) {
+                categoriesMap[type].push(customValue);
+            }
+
+            customInput.value = "";
+            populateCategories();
+            saveWorkspaceToLocalStorage();
+            document.getElementById("formCategory").value = customValue;
+        }
+
+        function openCategoryManager() {
+            const managerType = document.getElementById("formType").value;
+            document.getElementById("categoryManagerType").value = managerType;
+            renderCategoryManager();
+            document.getElementById("categoryManagerModal").showModal();
+        }
+
+        function closeCategoryManager() {
+            document.getElementById("categoryManagerModal").close();
+            document.getElementById("categoryManagerNewInput").value = "";
+        }
+
+        function renderCategoryManager() {
+            const type = document.getElementById("categoryManagerType").value;
+            const listContainer = document.getElementById("categoryManagerList");
+            listContainer.innerHTML = "";
+
+            categoriesMap[type].forEach((category, index) => {
+                const row = document.createElement("div");
+                row.className = "grid grid-cols-1 sm:grid-cols-[1fr_auto_auto] gap-2 items-center";
+                row.innerHTML = `
+                    <input id="categoryRenameInput_${type}_${index}" type="text" value="${escapeHtmlString(category)}" class="w-full bg-slate-50 border border-slate-300 rounded-lg text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition">
+                    <button type="button" onclick="renameCategory('${type}', ${index})" class="inline-flex items-center justify-center px-3 py-2 bg-sky-600 hover:bg-sky-700 text-white text-xs font-medium rounded-lg transition">Rename</button>
+                    <button type="button" onclick="deleteCategory('${type}', ${index})" class="inline-flex items-center justify-center px-3 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-medium rounded-lg transition">Delete</button>
+                `;
+                listContainer.appendChild(row);
+            });
+        }
+
+        function addCategoryViaManager() {
+            const type = document.getElementById("categoryManagerType").value;
+            const input = document.getElementById("categoryManagerNewInput");
+            const newCategory = input.value.trim();
+            if (!newCategory) {
+                alert("Enter a category name before adding.");
+                return;
+            }
+            if (categoriesMap[type].includes(newCategory)) {
+                alert("That category already exists.");
+                return;
+            }
+            categoriesMap[type].push(newCategory);
+            input.value = "";
+            saveWorkspaceToLocalStorage();
+            populateCategories();
+            renderCategoryManager();
+        }
+
+        function renameCategory(type, index) {
+            const input = document.getElementById(`categoryRenameInput_${type}_${index}`);
+            const newLabel = input.value.trim();
+            if (!newLabel) {
+                alert("Category name cannot be empty.");
+                return;
+            }
+            if (categoriesMap[type].includes(newLabel) && categoriesMap[type][index] !== newLabel) {
+                alert("A category with that name already exists.");
+                return;
+            }
+            categoriesMap[type][index] = newLabel;
+            saveWorkspaceToLocalStorage();
+            populateCategories();
+            renderCategoryManager();
+        }
+
+        function deleteCategory(type, index) {
+            if (!confirm("Delete this category? Existing transactions with this category will keep their old names.")) {
+                return;
+            }
+            categoriesMap[type].splice(index, 1);
+            saveWorkspaceToLocalStorage();
+            populateCategories();
+            renderCategoryManager();
+        }
+
+        function buildAndStoreCSVString() {
+            const csvRows = [DEFAULT_CSV_HEADERS];
+            transactionsState.forEach(tx => {
+                csvRows.push([
+                    tx.date,
+                    tx.type,
+                    tx.category,
+                    tx.nature || "Real",
+                    tx.amount.toString(),
+                    tx.description,
+                    tx.attachmentBase64 || ""
+                ]);
+            });
+
+            currentCSVString = buildRFC4180CSVString(csvRows);
+            localStorage.setItem("FIN_LEDGER_CSV", currentCSVString);
+        }
+
+        function clearWorkspace() {
+            if (confirm("Are you absolutely sure you want to completely erase your current active local tracking workspace data?")) {
+                transactionsState = [];
+                localStorage.removeItem("FIN_LEDGER_STATE");
+                localStorage.removeItem("FIN_LEDGER_CSV");
+                processFilterView();
+            }
+        }
+
+        // Recalculates metrics based on active records
+        function updateMetrics() {
+            let totalIncome = 0;
+            let totalExpenses = 0;
+
+            transactionsState.forEach(tx => {
+                if (tx.type === "Income") totalIncome += tx.amount;
+                else if (tx.type === "Expense") totalExpenses += tx.amount;
+            });
+
+            const netProfit = totalIncome - totalExpenses;
+            const configurationTaxPercentageRate = parseFloat(document.getElementById("taxRateInput").value || 0) / 100;
+            const estimatedTaxLiability = netProfit > 0 ? netProfit * configurationTaxPercentageRate : 0;
+
+            // Cache validation variables updates mappings inside state registers UI loops elements
+            saveWorkspaceToLocalStorage();
+
+            // Format numbers to localized strings safely
+            document.getElementById("kpiIncome").textContent = formatCurrencyValue(totalIncome);
+            document.getElementById("kpiExpenses").textContent = formatCurrencyValue(totalExpenses);
+            document.getElementById("kpiNet").textContent = formatCurrencyValue(netProfit);
+            document.getElementById("kpiTax").textContent = formatCurrencyValue(estimatedTaxLiability);
+
+            // Dynamically style the Net Profit card based on positive/negative balance
+            const netCardIcon = document.getElementById("kpiNetIconContainer");
+            if (netProfit >= 0) {
+                document.getElementById("kpiNet").className = "text-2xl font-bold text-slate-900 mt-1";
+                netCardIcon.className = "p-3 bg-emerald-50 text-emerald-600 rounded-xl";
+            } else {
+                document.getElementById("kpiNet").className = "text-2xl font-bold text-rose-600 mt-1";
+                netCardIcon.className = "p-3 bg-rose-50 text-rose-600 rounded-xl";
+            }
+
+            renderAnalyticalTrendChart();
+        }
+
+        function formatCurrencyValue(value) {
+            return new Intl.NumberFormat('en-HK', { style: 'currency', currency: 'HKD' }).format(value);
+        }
+
+        // Process search criteria query arrays and cache matching structures locally
+        function processFilterView() {
+            const queryText = document.getElementById("filterSearch").value.toLowerCase();
+            const chosenType = document.getElementById("filterType").value;
+            const chosenCategory = document.getElementById("filterCategory").value;
+            const intervalStartDate = document.getElementById("filterStartDate").value;
+            const intervalEndDate = document.getElementById("filterEndDate").value;
+
+            filteredTransactionsCache = transactionsState.filter(tx => {
+                const indexMatch = !queryText || tx.description.toLowerCase().includes(queryText) || tx.category.toLowerCase().includes(queryText);
+                const typeMatch = chosenType === "All" || tx.type === chosenType;
+                const categoryMatch = chosenCategory === "All" || tx.category === chosenCategory;
+                const afterStart = !intervalStartDate || tx.date >= intervalStartDate;
+                const beforeEnd = !intervalEndDate || tx.date <= intervalEndDate;
+                return indexMatch && typeMatch && categoryMatch && afterStart && beforeEnd;
+            });
+
+            // Adjust internal active pagination context pointers if records decrease out of frame bounds arrays
+            const maximumCalculatedPageCap = Math.max(1, Math.ceil(filteredTransactionsCache.length / pageRecordsConstraint));
+            if (currentActivePage > maximumCalculatedPageCap) {
+                currentActivePage = maximumCalculatedPageCap;
+            }
+
+            updateMetrics();
+            renderTableRecords();
+        }
+
+        // Displays rows based on pagination bounds
+        function renderTableRecords() {
+            const targetTbody = document.getElementById("ledgerTableBody");
+            targetTbody.innerHTML = "";
+
+            const totalCachedRecordsCount = filteredTransactionsCache.length;
+            const effectivePageSize = showAllRecords ? Math.max(totalCachedRecordsCount, 1) : pageRecordsConstraint;
+            const lowerIndexOffsetRangeBound = (currentActivePage - 1) * effectivePageSize;
+            const upperIndexOffsetRangeBound = Math.min(lowerIndexOffsetRangeBound + effectivePageSize, totalCachedRecordsCount);
+
+            const activePaginatedSubset = filteredTransactionsCache.slice(lowerIndexOffsetRangeBound, upperIndexOffsetRangeBound);
+
+            if (activePaginatedSubset.length === 0) {
+                targetTbody.innerHTML = `
+                    <tr>
+                        <td colspan="8" class="px-6 py-12 text-center text-xs text-slate-400 font-medium tracking-wide bg-slate-50/30">
+                            No active records match the provided filter parameters. Try expanding your parameters or log a new entry.
+                        </td>
+                    </tr>
+                `;
+                document.getElementById("paginationSummary").textContent = "Showing 0 to 0 of 0 database entities";
+                document.getElementById("btnPrevPage").disabled = true;
+                document.getElementById("btnNextPage").disabled = true;
+                document.getElementById("pageIndicator").textContent = "Page 1 of 1";
+                return;
+            }
+
+            activePaginatedSubset.forEach(tx => {
+                const tr = document.createElement("tr");
+                tr.className = "hover:bg-slate-50/80 transition-colors";
+
+                const typeBadgeClass = tx.type === "Income" 
+                    ? "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200"
+                    : "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-50 text-rose-700 border border-rose-200";
+
+                const visualAttachmentButtonMarkup = tx.attachmentBase64 
+                    ? `<button onclick="openAssetModal('${tx.id}')" class="inline-flex items-center px-2 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded text-[11px] font-medium transition border border-indigo-200">
+                        <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
+                        Review Asset
+                       </button>`
+                    : `<span class="text-slate-400 italic text-[11px]">No proof file</span>`;
+
+                tr.innerHTML = `
+                    <td class="px-6 py-4 whitespace-nowrap font-medium text-slate-700">${tx.date}</td>
+                    <td class="px-6 py-4 whitespace-nowrap"><span class="${typeBadgeClass}">${tx.type}</span></td>
+                    <td class="px-6 py-4 whitespace-nowrap text-slate-700 font-medium">${tx.category}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-slate-700 font-medium">${escapeHtmlString(tx.nature || 'Real')}</td>
+                    <td class="px-6 py-4 max-w-xs truncate text-slate-500" title="${escapeHtmlString(tx.description)}">${escapeHtmlString(tx.description || '—')}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-right font-bold ${tx.type === 'Income' ? 'text-emerald-600' : 'text-slate-800'}">${formatCurrencyValue(tx.amount)}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-center">${visualAttachmentButtonMarkup}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-center space-x-1">
+                        <button onclick="editRecord('${tx.id}')" class="inline-flex items-center px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-[11px] font-medium transition" title="Edit record entry row">Edit</button>
+                        <button onclick="deleteRecordItemRow('${tx.id}')" class="inline-flex items-center px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded text-[11px] font-medium transition" title="Delete record entry row">Delete</button>
+                    </td>
+                `;
+                targetTbody.appendChild(tr);
+            });
+
+            // Re-render display variables numbers summary values outputs checks
+            document.getElementById("paginationSummary").textContent = `Showing ${lowerIndexOffsetRangeBound + 1} to ${upperIndexOffsetRangeBound} of ${totalCachedRecordsCount} database entities`;
+            
+            const totalPossiblePagesCount = Math.max(1, Math.ceil(totalCachedRecordsCount / effectivePageSize));
+            document.getElementById("pageIndicator").textContent = `Page ${currentActivePage} of ${totalPossiblePagesCount}`;
+            document.getElementById("btnPrevPage").disabled = (currentActivePage === 1);
+            document.getElementById("btnNextPage").disabled = (currentActivePage === totalPossiblePagesCount);
+        }
+
+        function changePage(directionOffsetValue) {
+            currentActivePage += directionOffsetValue;
+            renderTableRecords();
+        }
+
+        function deleteRecordItemRow(targetUniqueId) {
+            if (confirm("Are you certain you want to remove this ledger item entry row from active database memory variables?")) {
+                transactionsState = transactionsState.filter(tx => tx.id !== targetUniqueId);
+                saveWorkspaceToLocalStorage();
+                processFilterView();
+            }
+        }
+
+        // Analytical Time Trend Dashboard Chart Aggregation and Draw Pipeline engine configuration loops
+        function renderAnalyticalTrendChart() {
+            const canvasContextElement = document.getElementById("trendChart").getContext("2d");
+            
+            // Collect chronologically sorted lists of all transaction dates
+            const trackingTimelineMap = {};
+            
+            // Process reverse layout ordering copy for timeline trend line generation processing
+            const sortedTemporalClones = [...transactionsState].sort((a, b) => new Date(a.date) - new Date(b.date));
+
+            sortedTemporalClones.forEach(tx => {
+                if (!trackingTimelineMap[tx.date]) {
+                    trackingTimelineMap[tx.date] = { Income: 0, Expense: 0 };
+                }
+                trackingTimelineMap[tx.date][tx.type] += tx.amount;
+            });
+
+            const uniqueTimelineLabels = Object.keys(trackingTimelineMap);
+            const incomeDataPoints = [];
+            const expenseDataPoints = [];
+
+            uniqueTimelineLabels.forEach(date => {
+                incomeDataPoints.push(trackingTimelineMap[date].Income);
+                expenseDataPoints.push(trackingTimelineMap[date].Expense);
+            });
+
+            if (chartInstanceReference) {
+                chartInstanceReference.destroy();
+            }
+
+            chartInstanceReference = new Chart(canvasContextElement, {
+                type: 'bar',
+                data: {
+                    labels: uniqueTimelineLabels,
+                    datasets: [
+                        {
+                            label: 'Income ($)',
+                            data: incomeDataPoints,
+                            backgroundColor: 'rgba(16, 185, 129, 0.75)',
+                            borderColor: 'rgb(16, 185, 129)',
+                            borderWidth: 1.5,
+                            borderRadius: 4
+                        },
+                        {
+                            label: 'Expense ($)',
+                            data: expenseDataPoints,
+                            backgroundColor: 'rgba(239, 68, 68, 0.75)',
+                            borderColor: 'rgb(239, 68, 68)',
+                            borderWidth: 1.5,
+                            borderRadius: 4
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: { grid: { display: false }, ticks: { font: { size: 10 } } },
+                        y: { 
+                            grid: { color: 'rgba(241, 245, 249, 1)' },
+                            ticks: { font: { size: 10 } },
+                            beginAtZero: true 
+                        }
+                    },
+                    plugins: {
+                        legend: { position: 'top', labels: { boxWidth: 12, font: { size: 11, weight: '500' } } }
+                    }
+                }
+            });
+        }
+
+        // Active Overlay Display Elements for viewing attachments
+        function openAssetModal(targetRecordId) {
+            const targetRecord = transactionsState.find(tx => tx.id === targetRecordId);
+            if (!targetRecord || !targetRecord.attachmentBase64) return;
+
+            const modalNode = document.getElementById("assetModal");
+            const canvasContentBox = document.getElementById("assetModalContent");
+            document.getElementById("assetModalTitle").textContent = `Asset Verification Visual Proof: Row Ref ID ${targetRecordId}`;
+
+            canvasContentBox.innerHTML = "";
+            const binaryAssetString = targetRecord.attachmentBase64;
+
+            if (binaryAssetString.startsWith("data:application/pdf;")) {
+                // Render a sandboxed viewport embed tag structure for local browser storage reading
+                const pdfEmbedNode = document.createElement("embed");
+                pdfEmbedNode.src = binaryAssetString;
+                pdfEmbedNode.type = "application/pdf";
+                pdfEmbedNode.className = "w-full h-[60vh] rounded-lg border border-slate-300 shadow-inner";
+                canvasContentBox.appendChild(pdfEmbedNode);
+            } else {
+                // Handle image data rendering
+                const imgAssetNode = document.createElement("img");
+                imgAssetNode.src = binaryAssetString;
+                imgAssetNode.alt = "Linked Ledger Document Asset";
+                imgAssetNode.className = "max-w-full max-h-[60vh] object-contain rounded-lg shadow-md border border-slate-200";
+                canvasContentBox.appendChild(imgAssetNode);
+            }
+
+            modalNode.showModal();
+        }
+
+        function closeAssetModal() {
+            document.getElementById("assetModal").close();
+            document.getElementById("assetModalContent").innerHTML = "";
+        }
+
+        // Optimized RFC 4180 Character State-Machine CSV Engine Functions
+        function parseRFC4180CSV(rawInputTextText) {
+            let activeFieldAccumulator = '';
+            let insideQuoteContextState = false;
+            let currentRecordRowArray = [''];
+            const fullyParsedMatrixRowsCollection = [];
+
+            for (let charIndex = 0; charIndex < rawInputTextText.length; charIndex++) {
+                const currentChar = rawInputTextText[charIndex];
+                const adjacentNextChar = rawInputTextText[charIndex + 1];
+
+                if (currentChar === '"') {
+                    if (insideQuoteContextState && adjacentNextChar === '"') {
+                        activeFieldAccumulator += '"';
+                        charIndex++; // Advance cursor past escaped quote sequence
+                    } else {
+                        insideQuoteContextState = !insideQuoteContextState; // Toggle parsing context flag state bounds
+                    }
+                } else if (currentChar === ',' && !insideQuoteContextState) {
+                    currentRecordRowArray.push('');
+                    activeFieldAccumulator = '';
+                } else if ((currentChar === '\r' || currentChar === '\n') && !insideQuoteContextState) {
+                    currentRecordRowArray[currentRecordRowArray.length - 1] = activeFieldAccumulator;
+                    fullyParsedMatrixRowsCollection.push(currentRecordRowArray);
+                    
+                    if (currentChar === '\r' && adjacentNextChar === '\n') { charIndex++; }
+                    currentRecordRowArray = [''];
+                    activeFieldAccumulator = '';
+                } else {
+                    activeFieldAccumulator += currentChar;
+                    currentRecordRowArray[currentRecordRowArray.length - 1] = activeFieldAccumulator;
+                }
+            }
+
+            if (currentRecordRowArray.length > 1 || currentRecordRowArray[0] !== '') {
+                currentRecordRowArray[currentRecordRowArray.length - 1] = activeFieldAccumulator;
+                fullyParsedMatrixRowsCollection.push(currentRecordRowArray);
+            }
+
+            return fullyParsedMatrixRowsCollection;
+        }
+
+        function buildRFC4180CSVString(matrixInputRows) {
+            return matrixInputRows.map(rowFields => 
+                rowFields.map(field => {
+                    const stringifiedValue = String(field ?? '');
+                    // Wrap fields in quotes if they contain delimiter safety characters
+                    if (stringifiedValue.includes('"') || stringifiedValue.includes(',') || stringifiedValue.includes('\n') || stringifiedValue.includes('\r')) {
+                        return '"' + stringifiedValue.replace(/"/g, '""') + '"';
+                    }
+                    return stringifiedValue;
+                }).join(',')
+            ).join('\r\n');
+        }
+
+        // External CSV File Workspace Operations
+        function handleCSVImport(event) {
+            const targetedUploadFile = event.target.files[0];
+            if (!targetedUploadFile) return;
+
+            const fileSystemReader = new FileReader();
+            fileSystemReader.onload = function(e) {
+                const rawStringResult = e.target.result;
+                const parseMatrixRows = parseRFC4180CSV(rawStringResult);
+
+                if (parseMatrixRows.length < 2) {
+                    alert("The provided document file metadata does not contain matching ledger arrays contexts rows values.");
+                    return;
+                }
+
+                const headersMapArray = parseMatrixRows[0].map(h => h.trim());
+                const targetStateBuffer = [];
+
+                for (let r = 1; r < parseMatrixRows.length; r++) {
+                    const dataRow = parseMatrixRows[r];
+                    if (dataRow.length < 5) continue; // Skip corrupted empty rows
+
+                    const recordRow = {
+                        id: 'tx_row_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5) + '_' + r,
+                        date: dataRow[headersMapArray.indexOf("Date")] || new Date().toISOString().split('T')[0],
+                        type: dataRow[headersMapArray.indexOf("Type")] || "Expense",
+                        category: dataRow[headersMapArray.indexOf("Category")] || "Miscellaneous Expenditures",
+                        amount: parseFloat(dataRow[headersMapArray.indexOf("Amount")] || 0),
+                        description: dataRow[headersMapArray.indexOf("Description")] || "",
+                        attachmentBase64: dataRow[headersMapArray.indexOf("AttachmentBase64")] || ""
+                    };
+                    targetStateBuffer.push(recordRow);
+                }
+
+                transactionsState = targetStateBuffer;
+                saveWorkspaceToLocalStorage();
+                currentActivePage = 1;
+                processFilterView();
+                document.getElementById("csvFileInput").value = "";
+                alert(`Successfully synchronized ${transactionsState.length} records into local workspace memory.`);
+            };
+            fileSystemReader.readAsText(targetedUploadFile);
+        }
+
+        function exportCSV() {
+            if (transactionsState.length === 0) {
+                alert("Your active data workspace is currently empty. There is no historical trace array layout mapping records to export.");
+                return;
+            }
+
+            const outputHeaders = ["Date", "Type", "Category", "Nature", "Amount", "Description", "AttachmentBase64"];
+            const csvOutputRowsMatrix = [outputHeaders];
+
+            // Reconstruct rows into matching structural array streams
+            transactionsState.forEach(tx => {
+                csvOutputRowsMatrix.push([
+                    tx.date,
+                    tx.type,
+                    tx.category,
+                    tx.nature || "Real",
+                    tx.amount.toString(),
+                    tx.description,
+                    tx.attachmentBase64 || ""
+                ]);
+            });
+
+            const unifiedCSVStringPayload = buildRFC4180CSVString(csvOutputRowsMatrix);
+            const binaryBlobPayload = new Blob([unifiedCSVStringPayload], { type: 'text/csv;charset=utf-8;' });
+            const temporaryDownloadAnchor = document.createElement("a");
+            
+            temporaryDownloadAnchor.href = URL.createObjectURL(binaryBlobPayload);
+            temporaryDownloadAnchor.setAttribute("download", `transactions_ledger_export_${new Date().toISOString().split('T')[0]}.csv`);
+            document.body.appendChild(temporaryDownloadAnchor);
+            temporaryDownloadAnchor.click();
+            document.body.removeChild(temporaryDownloadAnchor);
+        }
+
+        // Asynchronous Document Print Generation Engine functions
+        function generateTaxReportPDF() {
+            if (filteredTransactionsCache.length === 0) {
+                alert("There are no filtered items currently visible in the active workspace view boundary grid framework from which to render financial statements.");
+                return;
+            }
+
+            const targetPrintWrapper = document.getElementById("pdfPrintContainer");
+            targetPrintWrapper.innerHTML = ""; // Clear active document buffer canvas layers
+
+            // Compile localized summary stats calculation fields context variables arrays bounds
+            let incSum = 0, expSum = 0;
+            filteredTransactionsCache.forEach(t => { if(t.type === "Income") incSum += t.amount; else expSum += t.amount; });
+            const netCalc = incSum - expSum;
+            const taxConfigRateValue = parseFloat(document.getElementById("taxRateInput").value || 0);
+            const computedTaxVal = netCalc > 0 ? netCalc * (taxConfigRateValue / 100) : 0;
+
+            // Generate clean, semantic HTML structure for pristine PDF outputs formatting
+            let pdfStructuralContentString = `
+                <div style="font-family: Arial, sans-serif; color: #1e293b;">
+                    <!-- Report Header -->
+                    <div style="border-b: 4px solid #312e81; padding-bottom: 16px; margin-bottom: 24px;">
+                        <h1 style="font-size: 26px; font-weight: bold; color: #1e3a8a; margin: 0;">FinLedger Corporate Tax Report Audit</h1>
+                        <p style="font-size: 12px; color: #64748b; margin: 4px 0 0 0;">Generated Operational Statement Pipeline — Runtime Period: ${new Date().toLocaleString()}</p>
+                    </div>
+
+                    <!-- KPI Financial Balance Framework -->
+                    <div style="margin-bottom: 32px;">
+                        <h3 style="font-size: 14px; font-weight: bold; text-transform: uppercase; color: #475569; letter-spacing: 0.5px; margin-bottom: 12px;">Financial Position Ledger Abstract</h3>
+                        <table style="width: 100%; border-collapse: collapse; text-align: left;">
+                            <thead>
+                                <tr style="background-color: #f8fafc;">
+                                    <th style="padding: 10px; font-size: 11px; font-weight: bold; color: #627d98; border: 1px solid #e2e8f0;">Total Aggregate Income</th>
+                                    <th style="padding: 10px; font-size: 11px; font-weight: bold; color: #627d98; border: 1px solid #e2e8f0;">Total Operational Expense</th>
+                                    <th style="padding: 10px; font-size: 11px; font-weight: bold; color: #627d98; border: 1px solid #e2e8f0;">Net Accounting Margin</th>
+                                    <th style="padding: 10px; font-size: 11px; font-weight: bold; color: #627d98; border: 1px solid #e2e8f0;">Assessed Tax Liability (${taxConfigRateValue}%)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td style="padding: 12px; font-size: 16px; font-weight: bold; color: #10b981; border: 1px solid #e2e8f0;">${formatCurrencyValue(incSum)}</td>
+                                    <td style="padding: 12px; font-size: 16px; font-weight: bold; color: #dd2c2c; border: 1px solid #e2e8f0;">${formatCurrencyValue(expSum)}</td>
+                                    <td style="padding: 12px; font-size: 16px; font-weight: bold; color: ${netCalc >= 0 ? '#0f172a' : '#dd2c2c'}; border: 1px solid #e2e8f0;">${formatCurrencyValue(netCalc)}</td>
+                                    <td style="padding: 12px; font-size: 16px; font-weight: bold; color: #b45309; border: 1px solid #e2e8f0; background-color: #fffbeb;">${formatCurrencyValue(computedTaxVal)}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Comprehensive Item Rows Data Listing Layout Section -->
+                    <div style="margin-bottom: 32px;">
+                        <h3 style="font-size: 14px; font-weight: bold; text-transform: uppercase; color: #475569; letter-spacing: 0.5px; margin-bottom: 12px;">Reconciled Transaction Journal Records (${filteredTransactionsCache.length} rows)</h3>
+                        <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 11px;">
+                            <thead>
+                                <tr style="background-color: #f1f5f9; color: #475569; font-weight: bold;">
+                                    <th style="padding: 8px; border: 1px solid #e2e8f0;">Execution Date</th>
+                                    <th style="padding: 8px; border: 1px solid #e2e8f0;">Type</th>
+                                    <th style="padding: 8px; border: 1px solid #e2e8f0;">Category Allocation</th>
+                                    <th style="padding: 8px; border: 1px solid #e2e8f0;">Line Trace Description</th>
+                                    <th style="padding: 8px; border: 1px solid #e2e8f0; text-align: right;">Value Amount</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+            `;
+
+            filteredTransactionsCache.forEach(tx => {
+                pdfStructuralContentString += `
+                    <tr style="color: #334155;">
+                        <td style="padding: 7px; border: 1px solid #e2e8f0; font-weight: 500;">${tx.date}</td>
+                        <td style="padding: 7px; border: 1px solid #e2e8f0; font-weight: bold; color: ${tx.type === 'Income' ? '#10b981' : '#ef4444'};">${tx.type}</td>
+                        <td style="padding: 7px; border: 1px solid #e2e8f0; font-weight: 500;">${tx.category}</td>
+                        <td style="padding: 7px; border: 1px solid #e2e8f0; font-weight: 500;">${escapeHtmlString(tx.nature || 'Real')}</td>
+                        <td style="padding: 7px; border: 1px solid #e2e8f0; color: #64748b;">${escapeHtmlString(tx.description || '—')}</td>
+                        <td style="padding: 7px; border: 1px solid #e2e8f0; text-align: right; font-weight: bold; color: ${tx.type === 'Income' ? '#10b981' : '#0f172a'};">${formatCurrencyValue(tx.amount)}</td>
+                    </tr>
+                `;
+            });
+
+            pdfStructuralContentString += `
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+
+            // Append collected base64 attached physical assets receipts loops as appending pages components
+            let activePhysicalReceiptsAppendedCount = 0;
+            filteredTransactionsCache.forEach((tx, idx) => {
+                if (tx.attachmentBase64) {
+                    activePhysicalReceiptsAppendedCount++;
+                    // Inject a hard page-break layout break boundary marker rule before each document attachment object asset
+                    pdfStructuralContentString += `
+                        <div style="page-break-before: always; padding-top: 20px;">
+                            <div style="border-b: 2px solid #64748b; padding-bottom: 8px; margin-bottom: 20px;">
+                                <h3 style="font-size: 14px; font-weight: bold; color: #1e293b; margin: 0;">Audit Proof Appendix Document #${activePhysicalReceiptsAppendedCount}</h3>
+                                <p style="font-size: 11px; color: #64748b; margin: 2px 0 0 0;">Linked Transaction: [${tx.date}] ${tx.category} - ${formatCurrencyValue(tx.amount)} (${escapeHtmlString(tx.description || 'No description')})</p>
+                            </div>
+                    `;
+
+                    if (tx.attachmentBase64.startsWith("data:application/pdf;")) {
+                        pdfStructuralContentString += `
+                            <div style="padding: 40px; border: 1px dashed #cbd5e1; background-color: #f8fafc; text-align: center; border-radius: 8px;">
+                                <p style="font-size: 14px; font-weight: bold; color: #475569; margin: 0;">Embedded Binary PDF Asset Source Container</p>
+                                <p style="font-size: 12px; color: #94a3b8; margin: 8px 0 0 0;">Digital references are natively embedded inside the parent CSV file block matrix array dataset stream structures.</p>
+                            </div>
+                        `;
+                    } else {
+                        pdfStructuralContentString += `
+                            <div style="text-align: center; background-color: #f8fafc; border: 1px solid #e2e8f0; padding: 16px; border-radius: 8px;">
+                                <img src="${tx.attachmentBase64}" style="max-width: 100%; max-height: 750px; object-contain: scale-down; border-radius: 4px; shadow: 0 4px 6px -1px rgba(0,0,0,0.1);" />
+                            </div>
+                        `;
+                    }
+                    pdfStructuralContentString += `</div>`;
+                }
+            });
+
+            // Stream complete generated element markup into compiling hidden viewport print canvas container row targets elements
+            targetPrintWrapper.innerHTML = pdfStructuralContentString;
+
+            // Trigger targeted compilation settings configs engine executions using html2pdf
+            const printingConfigurationOptionsContainer = {
+                margin: 0.5,
+                filename: `Corporate_Tax_Reconciliation_Ledger_Report_${new Date().toISOString().split('T')[0]}.pdf`,
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: { scale: 2, useCORS: true, logging: false },
+                jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
+            };
+
+            html2pdf().set(printingConfigurationOptionsContainer).from(targetPrintWrapper).save().then(() => {
+                targetPrintWrapper.innerHTML = ""; // Flush DOM hidden print buffer memory channels after download complete
+            });
+        }
+
+        // Security Utility for Escaping HTML injection vectors inside context output views tracking frameworks
+        function escapeHtmlString(stringInput) {
+            if (!stringInput) return '';
+            return stringInput
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+    </script>
+</body>
+</html>
