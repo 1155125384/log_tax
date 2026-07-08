@@ -591,8 +591,22 @@
             });
 
             if (!resp.ok) {
-                const body = await resp.text();
-                throw new Error(`Dispatch failed: ${resp.status} ${resp.statusText} ${body}`);
+                let responseBody = await resp.text();
+                let parsedBody = responseBody;
+                try {
+                    parsedBody = JSON.parse(responseBody);
+                } catch (e) {
+                    parsedBody = responseBody;
+                }
+
+                const messageHint = resp.status === 401
+                    ? 'Bad credentials. Please verify your GitHub PAT has repo scope and is still valid, then save it again.'
+                    : resp.status === 403
+                        ? 'Access denied. The PAT may be missing repo scope or GitHub may be blocking the request.'
+                        : 'GitHub dispatch failed.';
+
+                const bodyMessage = typeof parsedBody === 'object' && parsedBody.message ? parsedBody.message : parsedBody;
+                throw new Error(`${messageHint} (${resp.status} ${resp.statusText}: ${bodyMessage})`);
             }
 
             alert('Triggered GitHub workflow to update transactions_ledger.csv.');
