@@ -63,6 +63,12 @@
                         </svg>
                         Update from GitHub CSV
                     </button>
+                    <button onclick="openCsvBrowser()" class="inline-flex items-center px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg shadow-sm transition">
+                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"></path>
+                        </svg>
+                        Browse CSV Data
+                    </button>
                 </div>
             </div>
 
@@ -338,6 +344,40 @@
                 <div>
                     <h4 class="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">Existing Categories</h4>
                     <div id="categoryManagerList" class="space-y-3"></div>
+                </div>
+            </div>
+        </div>
+    </dialog>
+
+    <dialog id="csvBrowserModal" class="bg-transparent backdrop:bg-slate-900/60 p-4 max-w-6xl w-full focus:outline-none">
+        <div class="bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden flex flex-col max-h-[85vh]">
+            <div class="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between gap-3">
+                <div>
+                    <h3 class="text-sm font-bold text-slate-800">CSV Data Browser</h3>
+                    <p class="text-xs text-slate-500">Browse the active CSV ledger and delete rows directly from the browser.</p>
+                </div>
+                <button onclick="closeCsvBrowser()" class="text-slate-400 hover:text-slate-600 font-bold text-xl leading-none">&times;</button>
+            </div>
+            <div class="p-4 overflow-y-auto no-scrollbar">
+                <div class="mb-4 flex items-center justify-between gap-3">
+                    <p id="csvBrowserCount" class="text-xs text-slate-500">Loading ledger rows...</p>
+                    <button onclick="renderCsvBrowserRecords()" class="inline-flex items-center px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-medium rounded-lg transition">Refresh view</button>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-slate-200 text-left text-xs text-slate-600">
+                        <thead class="bg-slate-50 text-[10px] uppercase tracking-wider font-bold text-slate-500">
+                            <tr>
+                                <th class="px-4 py-3">Date</th>
+                                <th class="px-4 py-3">Type</th>
+                                <th class="px-4 py-3">Category</th>
+                                <th class="px-4 py-3">Nature</th>
+                                <th class="px-4 py-3">Description</th>
+                                <th class="px-4 py-3 text-right">Amount</th>
+                                <th class="px-4 py-3 text-center">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="csvBrowserTableBody" class="divide-y divide-slate-100 bg-white"></tbody>
+                    </table>
                 </div>
             </div>
         </div>
@@ -975,7 +1015,56 @@
                 transactionsState = transactionsState.filter(tx => tx.id !== targetUniqueId);
                 saveWorkspaceToLocalStorage();
                 processFilterView();
+                if (document.getElementById('csvBrowserModal')?.open) {
+                    renderCsvBrowserRecords();
+                }
             }
+        }
+
+        function openCsvBrowser() {
+            document.getElementById('csvBrowserModal').showModal();
+            renderCsvBrowserRecords();
+        }
+
+        function closeCsvBrowser() {
+            document.getElementById('csvBrowserModal').close();
+        }
+
+        function renderCsvBrowserRecords() {
+            const body = document.getElementById('csvBrowserTableBody');
+            const count = document.getElementById('csvBrowserCount');
+            body.innerHTML = '';
+
+            if (!transactionsState.length) {
+                body.innerHTML = `
+                    <tr>
+                        <td colspan="7" class="px-4 py-10 text-center text-xs text-slate-400 font-medium bg-slate-50/80">
+                            No CSV rows are currently loaded. Add entries or load from GitHub first.
+                        </td>
+                    </tr>
+                `;
+                count.textContent = '0 rows available in CSV browser.';
+                return;
+            }
+
+            transactionsState.forEach(tx => {
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-slate-50/80 transition-colors';
+                tr.innerHTML = `
+                    <td class="px-4 py-3 whitespace-nowrap font-medium text-slate-700">${tx.date}</td>
+                    <td class="px-4 py-3 whitespace-nowrap text-slate-700">${tx.type}</td>
+                    <td class="px-4 py-3 whitespace-nowrap text-slate-700">${escapeHtmlString(tx.category)}</td>
+                    <td class="px-4 py-3 whitespace-nowrap text-slate-700">${escapeHtmlString(tx.nature || 'Real')}</td>
+                    <td class="px-4 py-3 max-w-xl truncate text-slate-500" title="${escapeHtmlString(tx.description)}">${escapeHtmlString(tx.description || '—')}</td>
+                    <td class="px-4 py-3 whitespace-nowrap text-right font-bold ${tx.type === 'Income' ? 'text-emerald-600' : 'text-slate-800'}">${formatCurrencyValue(tx.amount)}</td>
+                    <td class="px-4 py-3 whitespace-nowrap text-center">
+                        <button onclick="deleteRecordItemRow('${tx.id}')" class="inline-flex items-center px-3 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded text-[11px] font-medium transition">Delete</button>
+                    </td>
+                `;
+                body.appendChild(tr);
+            });
+
+            count.textContent = `${transactionsState.length} row${transactionsState.length === 1 ? '' : 's'} available in CSV browser.`;
         }
 
         // Analytical Time Trend Dashboard Chart Aggregation and Draw Pipeline engine configuration loops
