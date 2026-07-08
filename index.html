@@ -390,7 +390,10 @@
                         <p id="csvBrowserCount" class="text-xs text-slate-500">Loading ledger rows...</p>
                         <p class="text-[10px] text-slate-400">Deleting a row here will also sync the updated CSV back to GitHub when your token is configured.</p>
                     </div>
-                    <button onclick="refreshCsvBrowserView()" class="inline-flex items-center px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-medium rounded-lg transition">Refresh view</button>
+                    <div class="flex gap-2">
+                        <button onclick="generateCsvBrowserReportPDF()" class="inline-flex items-center px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium rounded-lg transition">Export filtered PDF</button>
+                        <button onclick="refreshCsvBrowserView()" class="inline-flex items-center px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-medium rounded-lg transition">Refresh view</button>
+                    </div>
                 </div>
                 <div class="mb-4 space-y-3">
                     <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
@@ -638,13 +641,26 @@
         // Processing Input submissions logs and mutating structural persistent records state maps arrays arrays
         async function handleFormSubmit(event) {
             event.preventDefault();
+            const descriptionValue = document.getElementById("formDescription").value.trim();
+            const hasAttachment = Boolean(base64AssetStringTemp);
+
+            if (!descriptionValue) {
+                alert('Please enter a description before committing the entry.');
+                return;
+            }
+
+            if (!hasAttachment) {
+                alert('Please upload a photo before committing the entry.');
+                return;
+            }
+
             const formValues = {
                 date: document.getElementById("formDate").value,
                 type: document.getElementById("formType").value,
                 category: document.getElementById("formCategory").value,
                 nature: document.getElementById("formNature").value,
                 amount: parseFloat(document.getElementById("formAmount").value),
-                description: document.getElementById("formDescription").value.trim(),
+                description: descriptionValue,
                 attachmentBase64: base64AssetStringTemp
             };
 
@@ -1757,33 +1773,198 @@
             }
         }
 
-        // Asynchronous Document Print Generation Engine functions
-        function generateTaxReportPDF() {
+        function waitForImagesToLoad(container) {
+            const images = Array.from(container.querySelectorAll('img'));
+            if (!images.length) {
+                return Promise.resolve();
+            }
+
+            return Promise.all(images.map(img => {
+                if (!img.src) {
+                    return Promise.resolve();
+                }
+                if (img.complete) {
+                    return Promise.resolve();
+                }
+                if (typeof img.decode === 'function') {
+                    return img.decode().catch(() => Promise.resolve());
+                }
+                return new Promise(resolve => {
+                    img.onload = () => resolve();
+                    img.onerror = () => resolve();
+                    setTimeout(resolve, 3000);
+                });
+            }));
+        }
+
+        async function generateCsvBrowserReportPDF() {
+            const visibleRows = transactionsState.filter(tx => {
+                return csvBrowserFilterRows.every(row => {
+                    const column = row.column;
+                    if (!row.value && column !== 'Date' && column !== 'Amount' && column !== 'Description') {
+                        return true;
+                    }
+
+                    if (column === 'Date') {
+                        const startDate = row.startDate;
+                        const endDate = row.endDate;
+                        const matchesStart = !startDate || tx.date >= startDate;
+                        const matchesEnd = !endDate || tx.date <= endDate;
+                        return matchesStart && matchesEnd;
+                    }
+
+                    if (column === 'Description') {
+                        const searchText = (row.value || '').trim().toLowerCase();
+                        return !searchText || (tx.description || '').toLowerCase().includes(searchText);
+                    }
+
+                    if (column === 'Amount') {
+                        const minAmount = row.minAmount === '' ? NaN : parseFloat(row.minAmount);
+                        const maxAmount = row.maxAmount === '' ? NaN : parseFloat(row.maxAmount);
+                        const amount = Number(tx.amount || 0);
+                        const meetsMin = Number.isNaN(minAmount) || amount >= minAmount;
+                        const meetsMax = Number.isNaN(maxAmount) || amount <= maxAmount;
+                        return meetsMin && meetsMax;
+                    }
+
+                    const searchText = (row.value || '').trim().toLowerCase();
+                    if (!searchText) return true;
+
+                    let rawValue = '';
+                    if (column === 'Type') rawValue = tx.type || '';
+                    else if (column === 'Category') rawValue = tx.category || '';
+                    else if (column === 'Nature') rawValue = tx.nature || 'Real';
+
+                    return String(rawValue).toLowerCase() === searchText;
+                });
+            });
+
+            if (!visibleRows.length) {
+                alert('No rows match the current CSV browser filters.');
+                return;
+            }
+
+            let incSum = 0;
+            let expSum = 0;
+            visibleRows.forEach(tx => {
+                if (tx.type === 'Income') incSum += tx.amount;
+                else expSum += tx.amount;
+            });
+            const netCalc = incSum - expSum;
+
+            const PdfLib = window.jspdf && window.jspdf.jsPDF ? window.jspdf.jsPDF : window.jsPDF;
+            if (!PdfLib) {
+                alert('The PDF library is not available in this browser session.');
+                return;
+            }
+
+            const doc = new PdfLib('p', 'pt', 'a4');
+            const pageWidth = doc.internal.pageSize.getWidth();
+            const pageHeight = doc.internal.pageSize.getHeight();
+            const marginX = 40;
+            const marginY = 40;
+            const lineHeight = 15;
+            let cursorY = marginY;
+
+            const addWrappedText = (text, x, y, maxWidth, fontSize = 10) => {
+                doc.setFontSize(fontSize);
+                const words = String(text || '').split(/\s+/);
+                let line = '';
+                let currentY = y;
+                words.forEach(word => {
+                    const testLine = line ? `${line} ${word}` : word;
+                    const testWidth = doc.getTextWidth(testLine);
+                    if (testWidth > maxWidth && line) {
+                        doc.text(line, x, currentY);
+                        line = word;
+                        currentY += lineHeight;
+                    } else {
+                        line = testLine;
+                    }
+                });
+                if (line) {
+                    doc.text(line, x, currentY);
+                }
+                return currentY + lineHeight;
+            };
+
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(16);
+            doc.text('IRD-Style Supporting Evidence Report', marginX, cursorY);
+            cursorY += 24;
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(10);
+            cursorY = addWrappedText(`Generated from filtered CSV browser rows on ${new Date().toLocaleString()}`, marginX, cursorY, pageWidth - marginX * 2, 10);
+            cursorY = addWrappedText(`Rows: ${visibleRows.length} | Income: ${formatCurrencyValue(incSum)} | Expense: ${formatCurrencyValue(expSum)} | Net: ${formatCurrencyValue(netCalc)}`, marginX, cursorY, pageWidth - marginX * 2, 10);
+            cursorY += 8;
+            doc.setFont('helvetica', 'bold');
+            doc.text('Filtered Ledger Entries', marginX, cursorY);
+            cursorY += 12;
+            doc.setFont('helvetica', 'normal');
+
+            visibleRows.forEach(tx => {
+                const line = `${tx.date} | ${tx.type} | ${tx.category || '—'} | ${tx.description || '—'} | ${formatCurrencyValue(tx.amount)}`;
+                cursorY = addWrappedText(line, marginX, cursorY, pageWidth - marginX * 2, 9);
+                if (cursorY > pageHeight - 80) {
+                    doc.addPage();
+                    cursorY = marginY;
+                }
+            });
+
+            const attachmentRows = visibleRows.filter(tx => tx.attachmentBase64);
+            attachmentRows.forEach((tx, index) => {
+                if (cursorY > pageHeight - 120) {
+                    doc.addPage();
+                    cursorY = marginY;
+                }
+                doc.addPage();
+                cursorY = marginY;
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(14);
+                doc.text(`Supporting Proof ${index + 1}`, marginX, cursorY);
+                cursorY += 18;
+                doc.setFont('helvetica', 'normal');
+                doc.setFontSize(10);
+                cursorY = addWrappedText(`${tx.date} • ${tx.category || '—'} • ${tx.description || '—'}`, marginX, cursorY, pageWidth - marginX * 2, 10);
+                if (tx.attachmentBase64.startsWith('data:application/pdf;')) {
+                    cursorY = addWrappedText('PDF attachment included as reference; the browser export stores the source in the ledger entry.', marginX, cursorY, pageWidth - marginX * 2, 10);
+                } else {
+                    try {
+                        const imageWidth = pageWidth - marginX * 2;
+                        const imageHeight = Math.min(pageHeight - cursorY - 40, 500);
+                        doc.addImage(tx.attachmentBase64, 'JPEG', marginX, cursorY, imageWidth, imageHeight);
+                        cursorY += imageHeight + 10;
+                    } catch (error) {
+                        cursorY = addWrappedText('The attached image could not be rendered in this PDF export.', marginX, cursorY, pageWidth - marginX * 2, 10);
+                    }
+                }
+            });
+
+            doc.save(`IRD_Filtered_Export_${new Date().toISOString().split('T')[0]}.pdf`);
+        }
+
+        async function generateTaxReportPDF() {
             if (filteredTransactionsCache.length === 0) {
                 alert("There are no filtered items currently visible in the active workspace view boundary grid framework from which to render financial statements.");
                 return;
             }
 
             const targetPrintWrapper = document.getElementById("pdfPrintContainer");
-            targetPrintWrapper.innerHTML = ""; // Clear active document buffer canvas layers
+            targetPrintWrapper.innerHTML = "";
 
-            // Compile localized summary stats calculation fields context variables arrays bounds
             let incSum = 0, expSum = 0;
             filteredTransactionsCache.forEach(t => { if(t.type === "Income") incSum += t.amount; else expSum += t.amount; });
             const netCalc = incSum - expSum;
             const taxConfigRateValue = parseFloat(document.getElementById("taxRateInput").value || 0);
             const computedTaxVal = netCalc > 0 ? netCalc * (taxConfigRateValue / 100) : 0;
 
-            // Generate clean, semantic HTML structure for pristine PDF outputs formatting
             let pdfStructuralContentString = `
                 <div style="font-family: Arial, sans-serif; color: #1e293b;">
-                    <!-- Report Header -->
                     <div style="border-b: 4px solid #312e81; padding-bottom: 16px; margin-bottom: 24px;">
                         <h1 style="font-size: 26px; font-weight: bold; color: #1e3a8a; margin: 0;">FinLedger Corporate Tax Report Audit</h1>
                         <p style="font-size: 12px; color: #64748b; margin: 4px 0 0 0;">Generated Operational Statement Pipeline — Runtime Period: ${new Date().toLocaleString()}</p>
                     </div>
 
-                    <!-- KPI Financial Balance Framework -->
                     <div style="margin-bottom: 32px;">
                         <h3 style="font-size: 14px; font-weight: bold; text-transform: uppercase; color: #475569; letter-spacing: 0.5px; margin-bottom: 12px;">Financial Position Ledger Abstract</h3>
                         <table style="width: 100%; border-collapse: collapse; text-align: left;">
@@ -1806,7 +1987,6 @@
                         </table>
                     </div>
 
-                    <!-- Comprehensive Item Rows Data Listing Layout Section -->
                     <div style="margin-bottom: 32px;">
                         <h3 style="font-size: 14px; font-weight: bold; text-transform: uppercase; color: #475569; letter-spacing: 0.5px; margin-bottom: 12px;">Reconciled Transaction Journal Records (${filteredTransactionsCache.length} rows)</h3>
                         <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 11px;">
@@ -1828,7 +2008,6 @@
                         <td style="padding: 7px; border: 1px solid #e2e8f0; font-weight: 500;">${tx.date}</td>
                         <td style="padding: 7px; border: 1px solid #e2e8f0; font-weight: bold; color: ${tx.type === 'Income' ? '#10b981' : '#ef4444'};">${tx.type}</td>
                         <td style="padding: 7px; border: 1px solid #e2e8f0; font-weight: 500;">${tx.category}</td>
-                        <td style="padding: 7px; border: 1px solid #e2e8f0; font-weight: 500;">${escapeHtmlString(tx.nature || 'Real')}</td>
                         <td style="padding: 7px; border: 1px solid #e2e8f0; color: #64748b;">${escapeHtmlString(tx.description || '—')}</td>
                         <td style="padding: 7px; border: 1px solid #e2e8f0; text-align: right; font-weight: bold; color: ${tx.type === 'Income' ? '#10b981' : '#0f172a'};">${formatCurrencyValue(tx.amount)}</td>
                     </tr>
@@ -1842,12 +2021,10 @@
                 </div>
             `;
 
-            // Append collected base64 attached physical assets receipts loops as appending pages components
             let activePhysicalReceiptsAppendedCount = 0;
             filteredTransactionsCache.forEach((tx, idx) => {
                 if (tx.attachmentBase64) {
                     activePhysicalReceiptsAppendedCount++;
-                    // Inject a hard page-break layout break boundary marker rule before each document attachment object asset
                     pdfStructuralContentString += `
                         <div style="page-break-before: always; padding-top: 20px;">
                             <div style="border-b: 2px solid #64748b; padding-bottom: 8px; margin-bottom: 20px;">
@@ -1874,10 +2051,7 @@
                 }
             });
 
-            // Stream complete generated element markup into compiling hidden viewport print canvas container row targets elements
             targetPrintWrapper.innerHTML = pdfStructuralContentString;
-
-            // Trigger targeted compilation settings configs engine executions using html2pdf
             const printingConfigurationOptionsContainer = {
                 margin: 0.5,
                 filename: `Corporate_Tax_Reconciliation_Ledger_Report_${new Date().toISOString().split('T')[0]}.pdf`,
@@ -1887,7 +2061,7 @@
             };
 
             html2pdf().set(printingConfigurationOptionsContainer).from(targetPrintWrapper).save().then(() => {
-                targetPrintWrapper.innerHTML = ""; // Flush DOM hidden print buffer memory channels after download complete
+                targetPrintWrapper.innerHTML = "";
             });
         }
 
