@@ -506,6 +506,11 @@
         async function commitCsvToGitHub() {
             // This function sends a repository_dispatch event with the CSV content.
             // The workflow `.github/workflows/update-csv-from-dispatch.yml` will apply the change.
+            const tokenInput = document.getElementById('tokenUiInput');
+            if (tokenInput && tokenInput.value && tokenInput.value.trim()) {
+                saveTokenFromUi(tokenInput.value);
+            }
+
             const token = getGitHubToken();
             if (!token) return;
 
