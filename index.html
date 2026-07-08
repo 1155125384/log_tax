@@ -1551,6 +1551,21 @@
                 : localStorage.getItem('FIN_LEDGER_TRIGGER_TOKEN') || localStorage.getItem('FIN_LEDGER_GITHUB_TOKEN') || '';
         }
 
+        async function fetchGitHubCsvViaRawUrl(rawUrl) {
+            const response = await fetch(rawUrl, {
+                method: 'GET',
+                cache: 'no-store',
+                mode: 'cors'
+            });
+
+            if (!response.ok) {
+                const body = await response.text();
+                throw new Error(`GitHub raw URL read failed: ${response.status} ${response.statusText} ${body}`.trim());
+            }
+
+            return await response.text();
+        }
+
         async function fetchGitHubCsvViaApi(silent = false) {
             const apiUrl = `${GITHUB_API_BASE}/repos/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/contents/${encodeURIComponent(GITHUB_FILE_PATH)}?ref=${GITHUB_BRANCH}`;
             const headers = {
@@ -1593,8 +1608,11 @@
                 return;
             }
 
+            const normalizedRawUrl = normalizeGitHubRawUrl(rawUrlInput);
+            let sourceLabel = 'raw URL';
+
             try {
-                const rawText = await fetchGitHubCsvViaApi(silent);
+                const rawText = await fetchGitHubCsvViaRawUrl(normalizedRawUrl);
                 const parseMatrixRows = parseRFC4180CSV(rawText);
                 if (parseMatrixRows.length < 2) {
                     throw new Error("CSV file appears empty or invalid.");
@@ -1629,12 +1647,53 @@
                 processFilterView();
                 const hintNode = document.getElementById("githubCsvHint");
                 if (hintNode) {
-                    hintNode.textContent = `Loaded ${transactionsState.length} rows from GitHub via API.`;
+                    hintNode.textContent = `Loaded ${transactionsState.length} rows from GitHub via ${sourceLabel}.`;
                 }
             } catch (error) {
-                if (!silent) {
-                    let message = error.message || String(error);
-                    alert(`Unable to load CSV from GitHub: ${message}`);
+                try {
+                    const rawText = await fetchGitHubCsvViaApi(silent);
+                    sourceLabel = 'API';
+                    const parseMatrixRows = parseRFC4180CSV(rawText);
+                    if (parseMatrixRows.length < 2) {
+                        throw new Error("CSV file appears empty or invalid.");
+                    }
+
+                    const headersMapArray = parseMatrixRows[0].map(h => h.trim());
+                    const targetStateBuffer = [];
+
+                    for (let r = 1; r < parseMatrixRows.length; r++) {
+                        const dataRow = parseMatrixRows[r];
+                        if (dataRow.length < 5) continue;
+
+                        targetStateBuffer.push({
+                            id: 'tx_row_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5) + '_' + r,
+                            date: dataRow[headersMapArray.indexOf("Date")] || new Date().toISOString().split('T')[0],
+                            type: dataRow[headersMapArray.indexOf("Type")] || "Expense",
+                            category: dataRow[headersMapArray.indexOf("Category")] || "Miscellaneous Expenditures",
+                            nature: dataRow[headersMapArray.indexOf("Nature")] || "Real",
+                            amount: parseFloat(dataRow[headersMapArray.indexOf("Amount")] || 0),
+                            description: dataRow[headersMapArray.indexOf("Description")] || "",
+                            attachmentBase64: dataRow[headersMapArray.indexOf("AttachmentBase64")] || ""
+                        });
+                    }
+
+                    if (!targetStateBuffer.length) {
+                        throw new Error("No valid data rows were found in the CSV.");
+                    }
+
+                    transactionsState = targetStateBuffer;
+                    saveWorkspaceToLocalStorage();
+                    currentActivePage = 1;
+                    processFilterView();
+                    const hintNode = document.getElementById("githubCsvHint");
+                    if (hintNode) {
+                        hintNode.textContent = `Loaded ${transactionsState.length} rows from GitHub via ${sourceLabel}.`;
+                    }
+                } catch (fallbackError) {
+                    if (!silent) {
+                        let message = fallbackError.message || String(fallbackError);
+                        alert(`Unable to load CSV from GitHub: ${message}`);
+                    }
                 }
             }
         }
