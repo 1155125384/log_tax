@@ -47,20 +47,37 @@
     <main class="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 flex flex-col gap-6 overflow-y-auto">
         
         <!-- Data Management & Initialization Toolbar -->
-        <section class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div>
-                <h2 class="text-sm font-semibold text-slate-700 uppercase tracking-wider">Data Synchronization</h2>
-                <p class="text-xs text-slate-500">Import your ledger repo CSV file to begin, or export updates for your GitHub commit.</p>
+        <section class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 flex flex-col gap-4">
+            <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                    <h2 class="text-sm font-semibold text-slate-700 uppercase tracking-wider">Data Synchronization</h2>
+                    <p class="text-xs text-slate-500">Import your ledger repo CSV file to begin, or export updates for your GitHub commit.</p>
+                </div>
+                <div class="flex items-center gap-3 w-full max-w-lg md:justify-end">
+                    <button onclick="loadCSVFromGitHubUrl(GITHUB_RAW_CSV_URL)" class="inline-flex items-center px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium rounded-lg shadow-sm transition">
+                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"></path>
+                        </svg>
+                        Update from GitHub CSV
+                    </button>
+                </div>
             </div>
-            <div class="flex items-center gap-3 w-full max-w-lg">
-                <button onclick="loadCSVFromGitHubUrl(GITHUB_RAW_CSV_URL)" class="inline-flex items-center px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium rounded-lg shadow-sm transition">
-                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"></path>
-                    </svg>
-                    Update from GitHub CSV
-                </button>
+
+            <div class="border-t border-slate-100 pt-4 grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+                <div class="md:col-span-1">
+                    <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wider">Dashboard Authentication</label>
+                    <p class="text-[11px] text-slate-400">Provide a GitHub PAT with repo scope to dispatch commits.</p>
+                </div>
+                <div class="md:col-span-2 flex gap-2">
+                    <input type="password" id="tokenUiInput" placeholder="Paste your GitHub Personal Access Token (PAT) here..."
+                           class="flex-1 bg-slate-50 border border-slate-300 rounded-lg text-xs px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition"
+                           onchange="saveTokenFromUi(this.value)">
+                    <button type="button" onclick="clearTokenFromUi()" class="px-3 py-2 bg-rose-50 text-rose-600 hover:bg-rose-100 text-xs font-medium rounded-lg border border-rose-200 transition">
+                        Clear
+                    </button>
+                </div>
             </div>
-            <p id="githubCsvHint" class="mt-2 text-[11px] text-slate-500">This page always loads from the repo CSV at <code>transactions_ledger.csv</code>. Committing a new entry will also attempt to update the GitHub file.</p>
+            <p id="githubCsvHint" class="text-[11px] text-slate-500">This page always loads from the repo CSV at <code>transactions_ledger.csv</code>. Committing a new entry will also attempt to update the GitHub file.</p>
         </section>
 
         <!-- Dynamic KPI Financial Metrics Bar -->
@@ -356,6 +373,15 @@
             loadWorkspaceState();
             populateCategories();
             processFilterView();
+
+            const tokenInput = document.getElementById('tokenUiInput');
+            if (tokenInput) {
+                tokenInput.value = "";
+                const savedToken = localStorage.getItem('MY_GITHUB_TOKEN');
+                if (savedToken) {
+                    tokenInput.placeholder = "•••••••••••••••••••••••••••• (Saved locally)";
+                }
+            }
         });
 
         function initializeDefaults() {
@@ -513,14 +539,13 @@
         }
 
         function getGitHubToken() {
-            // The browser cannot read GitHub Actions secrets directly, so this page must use
-            // a token stored in the browser (localStorage or the URL) to call the GitHub API.
             const params = new URLSearchParams(window.location.search);
             const urlToken = params.get('gh_token') || params.get('token') || params.get('MY_GITHUB_TOKEN');
             if (urlToken) {
                 const trimmed = urlToken.trim();
                 localStorage.setItem('MY_GITHUB_TOKEN', trimmed);
                 localStorage.setItem('FIN_LEDGER_TRIGGER_TOKEN', trimmed);
+                localStorage.setItem('FIN_LEDGER_GITHUB_TOKEN', trimmed);
                 return trimmed;
             }
 
@@ -530,14 +555,40 @@
                 if (t) return t.trim();
             }
 
-            const token = prompt('Enter your GitHub personal access token with repo permissions (it will be saved in localStorage):');
-            if (!token) {
-                alert('GitHub token is required to update the repo file. Your local changes are still saved in the browser.');
-                return null;
+            const tokenInput = document.getElementById('tokenUiInput');
+            if (tokenInput) {
+                tokenInput.focus();
             }
-            localStorage.setItem('MY_GITHUB_TOKEN', token.trim());
-            localStorage.setItem('FIN_LEDGER_TRIGGER_TOKEN', token.trim());
-            return token.trim();
+            alert('GitHub authentication token missing! Please add your token via the Data Synchronization access configuration area.');
+            return null;
+        }
+
+        function saveTokenFromUi(value) {
+            if (!value || value.trim() === "") return;
+            const token = value.trim();
+            localStorage.setItem('MY_GITHUB_TOKEN', token);
+            localStorage.setItem('FIN_LEDGER_TRIGGER_TOKEN', token);
+            localStorage.setItem('FIN_LEDGER_GITHUB_TOKEN', token);
+
+            const tokenInput = document.getElementById('tokenUiInput');
+            if (tokenInput) {
+                tokenInput.value = "";
+                tokenInput.placeholder = "•••••••••••••••••••••••••••• (Saved locally)";
+            }
+            alert('Token saved successfully to your browser local storage.');
+        }
+
+        function clearTokenFromUi() {
+            localStorage.removeItem('MY_GITHUB_TOKEN');
+            localStorage.removeItem('FIN_LEDGER_TRIGGER_TOKEN');
+            localStorage.removeItem('FIN_LEDGER_GITHUB_TOKEN');
+
+            const tokenInput = document.getElementById('tokenUiInput');
+            if (tokenInput) {
+                tokenInput.value = "";
+                tokenInput.placeholder = "Paste your GitHub Personal Access Token (PAT) here...";
+            }
+            alert('Token cleared from browser storage.');
         }
 
         async function fetchGitHubFileSha() {
