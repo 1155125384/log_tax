@@ -364,7 +364,7 @@
                         <p id="csvBrowserCount" class="text-xs text-slate-500">Loading ledger rows...</p>
                         <p class="text-[10px] text-slate-400">Deleting a row here will also sync the updated CSV back to GitHub when your token is configured.</p>
                     </div>
-                    <button onclick="renderCsvBrowserRecords()" class="inline-flex items-center px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-medium rounded-lg transition">Refresh view</button>
+                    <button onclick="refreshCsvBrowserView()" class="inline-flex items-center px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-medium rounded-lg transition">Refresh view</button>
                 </div>
                 <div class="overflow-x-auto">
                     <table class="min-w-full divide-y divide-slate-200 text-left text-xs text-slate-600">
@@ -1068,6 +1068,10 @@
             document.getElementById('csvBrowserModal').close();
         }
 
+        function refreshCsvBrowserView() {
+            loadCSVFromGitHubUrl(GITHUB_RAW_CSV_URL, false);
+        }
+
         function renderCsvBrowserRecords() {
             const body = document.getElementById('csvBrowserTableBody');
             const count = document.getElementById('csvBrowserCount');
@@ -1291,8 +1295,16 @@
                 return;
             }
 
-            const normalizedUrl = normalizeGitHubRawUrl(rawUrlInput);
-            fetch(normalizedUrl)
+            let normalizedUrl = normalizeGitHubRawUrl(rawUrlInput);
+            try {
+                const urlObj = new URL(normalizedUrl);
+                urlObj.searchParams.set('_', Date.now().toString());
+                normalizedUrl = urlObj.toString();
+            } catch (e) {
+                normalizedUrl = `${normalizedUrl}${normalizedUrl.includes('?') ? '&' : '?'}_=${Date.now()}`;
+            }
+
+            fetch(normalizedUrl, { cache: 'no-store', headers: { 'Cache-Control': 'no-cache' } })
                 .then(response => {
                     if (!response.ok) {
                         throw new Error(`Request failed with status ${response.status}`);
