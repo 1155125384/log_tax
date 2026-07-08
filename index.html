@@ -69,7 +69,7 @@
             <div class="border-t border-slate-100 pt-4 grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
                 <div class="md:col-span-1">
                     <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wider">Dashboard Authentication</label>
-                    <p class="text-[11px] text-slate-400">Provide a GitHub PAT with repo scope to trigger the workflow. The workflow still uses the action secret for the push.</p>
+                    <p class="text-[11px] text-slate-400">Provide a GitHub PAT with repo scope to trigger the workflow. The workflow uses its own repository secret to perform the push, so the browser never reads that secret.</p>
                 </div>
                 <div class="md:col-span-2 flex gap-2">
                     <input type="password" id="tokenUiInput" placeholder="Paste your GitHub Personal Access Token (PAT) here..."
@@ -386,7 +386,7 @@
             const tokenInput = document.getElementById('tokenUiInput');
             if (tokenInput) {
                 tokenInput.value = "";
-                const savedToken = localStorage.getItem('MY_GITHUB_TOKEN');
+                const savedToken = localStorage.getItem('FIN_LEDGER_TRIGGER_TOKEN') || localStorage.getItem('FIN_LEDGER_GITHUB_TOKEN') || '';
                 if (savedToken) {
                     tokenInput.placeholder = "•••••••••••••••••••••••••••• (Saved locally)";
                     updateTokenStatus('Token status: saved locally.');
@@ -526,7 +526,7 @@
             const tokenInput = document.getElementById('tokenUiInput');
             const pat = (tokenInput && tokenInput.value && tokenInput.value.trim())
                 ? tokenInput.value.trim()
-                : localStorage.getItem('MY_GITHUB_TOKEN') || localStorage.getItem('FIN_LEDGER_TRIGGER_TOKEN') || '';
+                : localStorage.getItem('FIN_LEDGER_TRIGGER_TOKEN') || localStorage.getItem('FIN_LEDGER_GITHUB_TOKEN') || '';
 
             if (!pat) {
                 updateTokenStatus('Token status: not saved yet.');
@@ -569,7 +569,6 @@
                 return;
             }
             const token = value.trim();
-            localStorage.setItem('MY_GITHUB_TOKEN', token);
             localStorage.setItem('FIN_LEDGER_TRIGGER_TOKEN', token);
             localStorage.setItem('FIN_LEDGER_GITHUB_TOKEN', token);
 
@@ -583,7 +582,6 @@
         }
 
         function clearTokenFromUi() {
-            localStorage.removeItem('MY_GITHUB_TOKEN');
             localStorage.removeItem('FIN_LEDGER_TRIGGER_TOKEN');
             localStorage.removeItem('FIN_LEDGER_GITHUB_TOKEN');
 
