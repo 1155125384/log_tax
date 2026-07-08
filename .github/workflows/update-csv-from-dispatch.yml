@@ -19,20 +19,20 @@ jobs:
           set -e
           echo "Writing transactions CSV from repository_dispatch payload"
           python - <<'PY'
-import base64, json, os
-payload_path = os.environ.get('GITHUB_EVENT_PATH')
-with open(payload_path, 'r', encoding='utf-8') as f:
-    event = json.load(f)
-client = event.get('client_payload', {})
-csv_b64 = client.get('csv_base64')
-if not csv_b64:
-    print('No csv_base64 in payload')
-    raise SystemExit(1)
-content = base64.b64decode(csv_b64.encode('utf-8'))
-with open('transactions_ledger.csv', 'wb') as out:
-    out.write(content)
-print('Wrote transactions_ledger.csv')
-PY
+          import base64, json, os
+          payload_path = os.environ.get('GITHUB_EVENT_PATH')
+          with open(payload_path, 'r', encoding='utf-8') as f:
+              event = json.load(f)
+          client = event.get('client_payload', {})
+          csv_b64 = client.get('csv_base64')
+          if not csv_b64:
+              print('No csv_base64 in payload')
+              raise SystemExit(1)
+          content = base64.b64decode(csv_b64.encode('utf-8'))
+          with open('transactions_ledger.csv', 'wb') as out:
+              out.write(content)
+          print('Wrote transactions_ledger.csv')
+          PY
 
       - name: Commit and push
         run: |
