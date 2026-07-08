@@ -359,8 +359,11 @@
                 <button onclick="closeCsvBrowser()" class="text-slate-400 hover:text-slate-600 font-bold text-xl leading-none">&times;</button>
             </div>
             <div class="p-4 overflow-y-auto no-scrollbar">
-                <div class="mb-4 flex items-center justify-between gap-3">
-                    <p id="csvBrowserCount" class="text-xs text-slate-500">Loading ledger rows...</p>
+                <div class="mb-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                    <div class="space-y-1">
+                        <p id="csvBrowserCount" class="text-xs text-slate-500">Loading ledger rows...</p>
+                        <p class="text-[10px] text-slate-400">Deleting a row here will also sync the updated CSV back to GitHub when your token is configured.</p>
+                    </div>
                     <button onclick="renderCsvBrowserRecords()" class="inline-flex items-center px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-medium rounded-lg transition">Refresh view</button>
                 </div>
                 <div class="overflow-x-auto">
@@ -1010,14 +1013,35 @@
             renderTableRecords();
         }
 
-        function deleteRecordItemRow(targetUniqueId) {
-            if (confirm("Are you certain you want to remove this ledger item entry row from active database memory variables?")) {
-                transactionsState = transactionsState.filter(tx => tx.id !== targetUniqueId);
+        async function deleteRecordItemRow(targetUniqueId) {
+            if (!confirm("Are you certain you want to remove this ledger item entry row and update the GitHub CSV file?")) {
+                return;
+            }
+
+            const recordIndex = transactionsState.findIndex(tx => tx.id === targetUniqueId);
+            if (recordIndex === -1) return;
+
+            const removedRecord = transactionsState[recordIndex];
+            const previousState = [...transactionsState];
+
+            transactionsState.splice(recordIndex, 1);
+            saveWorkspaceToLocalStorage();
+            processFilterView();
+            if (document.getElementById('csvBrowserModal')?.open) {
+                renderCsvBrowserRecords();
+            }
+
+            try {
+                await commitCsvToGitHub();
+            } catch (error) {
+                // Restore local state if GitHub update fails
+                transactionsState = previousState;
                 saveWorkspaceToLocalStorage();
                 processFilterView();
                 if (document.getElementById('csvBrowserModal')?.open) {
                     renderCsvBrowserRecords();
                 }
+                alert(`Failed to update GitHub CSV: ${error.message}. The deleted row has been restored locally.`);
             }
         }
 
@@ -1058,7 +1082,7 @@
                     <td class="px-4 py-3 max-w-xl truncate text-slate-500" title="${escapeHtmlString(tx.description)}">${escapeHtmlString(tx.description || '—')}</td>
                     <td class="px-4 py-3 whitespace-nowrap text-right font-bold ${tx.type === 'Income' ? 'text-emerald-600' : 'text-slate-800'}">${formatCurrencyValue(tx.amount)}</td>
                     <td class="px-4 py-3 whitespace-nowrap text-center">
-                        <button onclick="deleteRecordItemRow('${tx.id}')" class="inline-flex items-center px-3 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded text-[11px] font-medium transition">Delete</button>
+                        <button onclick="deleteRecordItemRow('${tx.id}')" class="inline-flex items-center px-3 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded text-[11px] font-medium transition" title="Delete row and sync to GitHub">Delete and sync</button>
                     </td>
                 `;
                 body.appendChild(tr);
