@@ -392,6 +392,16 @@
                     </div>
                     <button onclick="refreshCsvBrowserView()" class="inline-flex items-center px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-medium rounded-lg transition">Refresh view</button>
                 </div>
+                <div class="mb-4 space-y-3">
+                    <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                        <p class="text-[10px] font-bold uppercase text-slate-500">Multiple filters</p>
+                        <div class="flex gap-2">
+                            <button type="button" onclick="addCsvBrowserFilterRow()" class="inline-flex items-center px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-medium rounded-lg transition">Add Filter</button>
+                            <button type="button" onclick="resetCsvBrowserFilters()" class="inline-flex items-center px-3 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-medium rounded-lg transition">Clear Filters</button>
+                        </div>
+                    </div>
+                    <div id="csvBrowserFilterRows" class="space-y-2"></div>
+                </div>
                 <div class="overflow-x-auto">
                     <table class="min-w-full divide-y divide-slate-200 text-left text-xs text-slate-600">
                         <thead class="bg-slate-50 text-[10px] uppercase tracking-wider font-bold text-slate-500">
@@ -438,6 +448,7 @@
         let transactionsState = [];
         let filteredTransactionsCache = [];
         let chartInstanceReference = null;
+        let csvBrowserFilterRows = [];
         let base64AssetStringTemp = "";
         let currentActivePage = 1;
         const pageRecordsConstraint = 10;
@@ -1129,7 +1140,7 @@
 
         function openCsvBrowser() {
             document.getElementById('csvBrowserModal').showModal();
-            renderCsvBrowserRecords();
+            resetCsvBrowserFilters();
         }
 
         function closeCsvBrowser() {
@@ -1138,6 +1149,132 @@
 
         function refreshCsvBrowserView() {
             loadCSVFromGitHubUrl(GITHUB_RAW_CSV_URL, false);
+        }
+
+        function addCsvBrowserFilterRow() {
+            csvBrowserFilterRows.push({
+                column: 'Type',
+                value: '',
+                startDate: '',
+                endDate: '',
+                minAmount: '',
+                maxAmount: ''
+            });
+            renderCsvBrowserFilterRows();
+            renderCsvBrowserRecords();
+        }
+
+        function updateCsvBrowserFilterRow(index, field, value) {
+            if (!csvBrowserFilterRows[index]) return;
+            csvBrowserFilterRows[index][field] = value;
+            renderCsvBrowserRecords();
+        }
+
+        function removeCsvBrowserFilterRow(index) {
+            csvBrowserFilterRows.splice(index, 1);
+            if (!csvBrowserFilterRows.length) {
+                addCsvBrowserFilterRow();
+                return;
+            }
+            renderCsvBrowserFilterRows();
+            renderCsvBrowserRecords();
+        }
+
+        function renderCsvBrowserFilterRows() {
+            const container = document.getElementById('csvBrowserFilterRows');
+            if (!container) return;
+
+            container.innerHTML = '';
+            if (!csvBrowserFilterRows.length) {
+                container.innerHTML = '<p class="text-[11px] text-slate-400">No filters added yet.</p>';
+                return;
+            }
+
+            csvBrowserFilterRows.forEach((row, index) => {
+                const uniqueValues = [...new Set(transactionsState.map(tx => {
+                    if (row.column === 'Type') return tx.type || '';
+                    if (row.column === 'Category') return tx.category || '';
+                    if (row.column === 'Nature') return tx.nature || 'Real';
+                    return '';
+                }))].filter(Boolean);
+
+                const optionMarkup = uniqueValues.length
+                    ? uniqueValues.map(value => `<option value="${escapeHtmlString(value)}" ${row.value === value ? 'selected' : ''}>${escapeHtmlString(value)}</option>`).join('')
+                    : '<option value="">No values available</option>';
+
+                let valueControlMarkup = '';
+                if (row.column === 'Date') {
+                    valueControlMarkup = `
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <div>
+                                <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">Start Date</label>
+                                <input type="date" value="${row.startDate}" onchange="updateCsvBrowserFilterRow(${index}, 'startDate', this.value); renderCsvBrowserRecords();" class="w-full bg-slate-50 border border-slate-300 rounded-lg text-xs px-2.5 py-1.5 focus:outline-none focus:border-indigo-500">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">End Date</label>
+                                <input type="date" value="${row.endDate}" onchange="updateCsvBrowserFilterRow(${index}, 'endDate', this.value); renderCsvBrowserRecords();" class="w-full bg-slate-50 border border-slate-300 rounded-lg text-xs px-2.5 py-1.5 focus:outline-none focus:border-indigo-500">
+                            </div>
+                        </div>
+                    `;
+                } else if (row.column === 'Description') {
+                    valueControlMarkup = `
+                        <div>
+                            <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">Description</label>
+                            <input type="text" value="${escapeHtmlString(row.value)}" oninput="updateCsvBrowserFilterRow(${index}, 'value', this.value); renderCsvBrowserRecords();" placeholder="Type description..." class="w-full bg-slate-50 border border-slate-300 rounded-lg text-xs px-2.5 py-1.5 focus:outline-none focus:border-indigo-500">
+                        </div>
+                    `;
+                } else if (row.column === 'Amount') {
+                    valueControlMarkup = `
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <div>
+                                <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">Min Price</label>
+                                <input type="number" step="0.01" value="${row.minAmount}" oninput="updateCsvBrowserFilterRow(${index}, 'minAmount', this.value); renderCsvBrowserRecords();" placeholder="0.00" class="w-full bg-slate-50 border border-slate-300 rounded-lg text-xs px-2.5 py-1.5 focus:outline-none focus:border-indigo-500">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">Max Price</label>
+                                <input type="number" step="0.01" value="${row.maxAmount}" oninput="updateCsvBrowserFilterRow(${index}, 'maxAmount', this.value); renderCsvBrowserRecords();" placeholder="0.00" class="w-full bg-slate-50 border border-slate-300 rounded-lg text-xs px-2.5 py-1.5 focus:outline-none focus:border-indigo-500">
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    valueControlMarkup = `
+                        <div>
+                            <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">Value</label>
+                            <select onchange="updateCsvBrowserFilterRow(${index}, 'value', this.value); renderCsvBrowserRecords();" class="w-full bg-slate-50 border border-slate-300 rounded-lg text-xs px-2.5 py-1.5 focus:outline-none focus:border-indigo-500">
+                                <option value="">All ${escapeHtmlString(row.column)} values</option>
+                                ${optionMarkup}
+                            </select>
+                        </div>
+                    `;
+                }
+
+                const rowElement = document.createElement('div');
+                rowElement.className = 'p-3 border border-slate-200 rounded-lg bg-slate-50/70 grid grid-cols-1 lg:grid-cols-[140px_1fr_auto] gap-3';
+                rowElement.innerHTML = `
+                    <div>
+                        <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">Column</label>
+                        <select onchange="updateCsvBrowserFilterRow(${index}, 'column', this.value); renderCsvBrowserFilterRows(); renderCsvBrowserRecords();" class="w-full bg-white border border-slate-300 rounded-lg text-xs px-2.5 py-1.5 focus:outline-none focus:border-indigo-500">
+                            <option value="Type" ${row.column === 'Type' ? 'selected' : ''}>Type</option>
+                            <option value="Category" ${row.column === 'Category' ? 'selected' : ''}>Category</option>
+                            <option value="Nature" ${row.column === 'Nature' ? 'selected' : ''}>Nature</option>
+                            <option value="Description" ${row.column === 'Description' ? 'selected' : ''}>Description</option>
+                            <option value="Amount" ${row.column === 'Amount' ? 'selected' : ''}>Amount</option>
+                            <option value="Date" ${row.column === 'Date' ? 'selected' : ''}>Date</option>
+                        </select>
+                    </div>
+                    <div>${valueControlMarkup}</div>
+                    <div class="flex items-end">
+                        <button type="button" onclick="removeCsvBrowserFilterRow(${index})" class="w-full py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg shadow font-medium text-sm transition">Remove</button>
+                    </div>
+                `;
+                container.appendChild(rowElement);
+            });
+        }
+
+        function resetCsvBrowserFilters() {
+            csvBrowserFilterRows = [{ column: 'Type', value: '', startDate: '', endDate: '', minAmount: '', maxAmount: '' }];
+            renderCsvBrowserFilterRows();
+            renderCsvBrowserRecords();
         }
 
         function renderCsvBrowserRecords() {
@@ -1157,7 +1294,60 @@
                 return;
             }
 
-            transactionsState.forEach(tx => {
+            const visibleRows = transactionsState.filter(tx => {
+                return csvBrowserFilterRows.every(row => {
+                    const column = row.column;
+                    if (!row.value && column !== 'Date' && column !== 'Amount' && column !== 'Description') {
+                        return true;
+                    }
+
+                    if (column === 'Date') {
+                        const startDate = row.startDate;
+                        const endDate = row.endDate;
+                        const matchesStart = !startDate || tx.date >= startDate;
+                        const matchesEnd = !endDate || tx.date <= endDate;
+                        return matchesStart && matchesEnd;
+                    }
+
+                    if (column === 'Description') {
+                        const searchText = (row.value || '').trim().toLowerCase();
+                        return !searchText || (tx.description || '').toLowerCase().includes(searchText);
+                    }
+
+                    if (column === 'Amount') {
+                        const minAmount = row.minAmount === '' ? NaN : parseFloat(row.minAmount);
+                        const maxAmount = row.maxAmount === '' ? NaN : parseFloat(row.maxAmount);
+                        const amount = Number(tx.amount || 0);
+                        const meetsMin = Number.isNaN(minAmount) || amount >= minAmount;
+                        const meetsMax = Number.isNaN(maxAmount) || amount <= maxAmount;
+                        return meetsMin && meetsMax;
+                    }
+
+                    const searchText = (row.value || '').trim().toLowerCase();
+                    if (!searchText) return true;
+
+                    let rawValue = '';
+                    if (column === 'Type') rawValue = tx.type || '';
+                    else if (column === 'Category') rawValue = tx.category || '';
+                    else if (column === 'Nature') rawValue = tx.nature || 'Real';
+
+                    return String(rawValue).toLowerCase() === searchText;
+                });
+            });
+
+            if (!visibleRows.length) {
+                body.innerHTML = `
+                    <tr>
+                        <td colspan="7" class="px-4 py-10 text-center text-xs text-slate-400 font-medium bg-slate-50/80">
+                            No rows match the selected filters.
+                        </td>
+                    </tr>
+                `;
+                count.textContent = '0 rows match the current CSV browser filters.';
+                return;
+            }
+
+            visibleRows.forEach(tx => {
                 const tr = document.createElement('tr');
                 tr.className = 'hover:bg-slate-50/80 transition-colors';
                 tr.innerHTML = `
@@ -1174,7 +1364,7 @@
                 body.appendChild(tr);
             });
 
-            count.textContent = `${transactionsState.length} row${transactionsState.length === 1 ? '' : 's'} available in CSV browser.`;
+            count.textContent = `${visibleRows.length} row${visibleRows.length === 1 ? '' : 's'} available in CSV browser.`;
         }
 
         // Analytical Time Trend Dashboard Chart Aggregation and Draw Pipeline engine configuration loops
