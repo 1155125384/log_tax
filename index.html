@@ -1335,34 +1335,8 @@
                 return;
             }
 
-            let normalizedUrl = normalizeGitHubRawUrl(rawUrlInput);
             try {
-                const urlObj = new URL(normalizedUrl);
-                urlObj.searchParams.set('_', Date.now().toString());
-                normalizedUrl = urlObj.toString();
-            } catch (e) {
-                normalizedUrl = `${normalizedUrl}${normalizedUrl.includes('?') ? '&' : '?'}_=${Date.now()}`;
-            }
-
-            let rawText;
-            try {
-                if (!silent && window.location.protocol === 'file:') {
-                    console.warn('Page is being served from file://. Network fetches may fail from this origin.');
-                }
-                const response = await fetch(normalizedUrl, { cache: 'no-store', mode: 'cors', headers: { 'Cache-Control': 'no-cache' }, credentials: 'omit' });
-                if (!response.ok) {
-                    throw new Error(`Request failed with status ${response.status}`);
-                }
-                rawText = await response.text();
-            } catch (initialError) {
-                if (!silent) {
-                    console.warn('Raw GitHub fetch failed, falling back to GitHub API:', initialError);
-                    alert('Raw GitHub fetch failed. Attempting fallback via the GitHub API.');
-                }
-                rawText = await fetchGitHubCsvViaApi(silent);
-            }
-
-            try {
+                const rawText = await fetchGitHubCsvViaApi(silent);
                 const parseMatrixRows = parseRFC4180CSV(rawText);
                 if (parseMatrixRows.length < 2) {
                     throw new Error("CSV file appears empty or invalid.");
@@ -1397,14 +1371,11 @@
                 processFilterView();
                 const hintNode = document.getElementById("githubCsvHint");
                 if (hintNode) {
-                    hintNode.textContent = `Loaded ${transactionsState.length} rows from GitHub.`;
+                    hintNode.textContent = `Loaded ${transactionsState.length} rows from GitHub via API.`;
                 }
             } catch (error) {
                 if (!silent) {
                     let message = error.message || String(error);
-                    if (message.includes('Failed to fetch')) {
-                        message = 'Failed to reach GitHub from this browser. Ensure you have internet access, that the page is served over http/https, and save a valid GitHub PAT for API fallback if needed.';
-                    }
                     alert(`Unable to load CSV from GitHub: ${message}`);
                 }
             }
