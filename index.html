@@ -513,19 +513,21 @@
         }
 
         function getGitHubToken() {
-            // Try multiple storage keys so you can pre-store a token in localStorage
-            const keys = ['FIN_LEDGER_TRIGGER_TOKEN', 'FIN_LEDGER_GITHUB_TOKEN'];
+            // Try multiple storage keys so you can pre-store a token in localStorage.
+            // This includes the GitHub Actions secret name you configured for the workflow.
+            const keys = ['MY_GITHUB_TOKEN', 'FIN_LEDGER_TRIGGER_TOKEN', 'FIN_LEDGER_GITHUB_TOKEN'];
             for (const k of keys) {
                 const t = localStorage.getItem(k);
                 if (t) return t.trim();
             }
 
-            // Fallback: prompt once and store it under FIN_LEDGER_TRIGGER_TOKEN
+            // Fallback: prompt once and store it under the configured keys.
             const token = prompt('Enter your GitHub personal access token with repo permissions (it will be saved in localStorage):');
             if (!token) {
                 alert('GitHub token is required to update the repo file. Your local changes are still saved in the browser.');
                 return null;
             }
+            localStorage.setItem('MY_GITHUB_TOKEN', token.trim());
             localStorage.setItem('FIN_LEDGER_TRIGGER_TOKEN', token.trim());
             return token.trim();
         }
