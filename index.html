@@ -553,8 +553,8 @@
                 reader.onload = function(event) {
                     const img = new Image();
                     img.onload = function() {
-                        const maxWidth = 900;
-                        const maxHeight = 900;
+                        const maxWidth = 600;
+                        const maxHeight = 600;
                         let width = img.width;
                         let height = img.height;
 
@@ -574,7 +574,19 @@
                         const context = canvas.getContext('2d');
                         context.drawImage(img, 0, 0, width, height);
 
-                        const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.7);
+                        let compressedDataUrl = canvas.toDataURL('image/jpeg', 0.45);
+                        let payloadSize = compressedDataUrl.length;
+
+                        if (payloadSize > 220000) {
+                            compressedDataUrl = canvas.toDataURL('image/jpeg', 0.25);
+                            payloadSize = compressedDataUrl.length;
+                        }
+
+                        if (payloadSize > 220000) {
+                            resolve('');
+                            return;
+                        }
+
                         resolve(compressedDataUrl);
                     };
                     img.onerror = reject;
@@ -598,6 +610,12 @@
 
             try {
                 const encodedData = await compressAndEncodeImage(targetFile);
+                if (!encodedData) {
+                    base64AssetStringTemp = "";
+                    alert('The selected image was too large to store safely. Please choose a smaller image.');
+                    clearSelectedAttachment();
+                    return;
+                }
                 base64AssetStringTemp = encodedData;
                 document.getElementById("attachmentPreviewContainer").classList.remove("hidden");
                 document.getElementById("attachmentFileName").textContent = targetFile.name;
