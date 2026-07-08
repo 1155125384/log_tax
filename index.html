@@ -73,9 +73,10 @@
                 </div>
                 <div class="md:col-span-2 flex gap-2">
                     <input type="password" id="tokenUiInput" placeholder="Paste your GitHub Personal Access Token (PAT) here..."
-                           class="flex-1 bg-slate-50 border border-slate-300 rounded-lg text-xs px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition"
-                           onchange="saveTokenFromUi(this.value)"
-                           onblur="saveTokenFromUi(this.value)">
+                           class="flex-1 bg-slate-50 border border-slate-300 rounded-lg text-xs px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition">
+                    <button type="button" onclick="saveTokenFromUi(document.getElementById('tokenUiInput').value)" class="px-3 py-2 bg-indigo-600 text-white hover:bg-indigo-700 text-xs font-medium rounded-lg transition">
+                        Save
+                    </button>
                     <button type="button" onclick="clearTokenFromUi()" class="px-3 py-2 bg-rose-50 text-rose-600 hover:bg-rose-100 text-xs font-medium rounded-lg border border-rose-200 transition">
                         Clear
                     </button>
@@ -504,16 +505,7 @@
         }
 
         async function commitCsvToGitHub() {
-            // This function sends a repository_dispatch event with the CSV content.
-            // The workflow `.github/workflows/update-csv-from-dispatch.yml` will apply the change.
-            const tokenInput = document.getElementById('tokenUiInput');
-            if (tokenInput && tokenInput.value && tokenInput.value.trim()) {
-                saveTokenFromUi(tokenInput.value);
-            }
-
-            const token = getGitHubToken();
-            if (!token) return;
-
+            // Trigger the existing workflow that reads the GitHub Actions secret and writes the CSV.
             const csvRows = [DEFAULT_CSV_HEADERS];
             transactionsState.forEach(tx => {
                 csvRows.push([
@@ -535,8 +527,7 @@
             const resp = await fetch(dispatchUrl, {
                 method: 'POST',
                 headers: {
-                    'Authorization': `token ${token}`,
-                    'Accept': 'application/vnd.github.everest-preview+json',
+                    'Accept': 'application/vnd.github+json',
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
@@ -559,36 +550,6 @@
             if (statusEl) {
                 statusEl.textContent = message;
             }
-        }
-
-        function getGitHubToken() {
-            const params = new URLSearchParams(window.location.search);
-            const urlToken = params.get('gh_token') || params.get('token') || params.get('MY_GITHUB_TOKEN');
-            if (urlToken) {
-                const trimmed = urlToken.trim();
-                localStorage.setItem('MY_GITHUB_TOKEN', trimmed);
-                localStorage.setItem('FIN_LEDGER_TRIGGER_TOKEN', trimmed);
-                localStorage.setItem('FIN_LEDGER_GITHUB_TOKEN', trimmed);
-                updateTokenStatus('Token status: loaded from URL.');
-                return trimmed;
-            }
-
-            const keys = ['MY_GITHUB_TOKEN', 'FIN_LEDGER_TRIGGER_TOKEN', 'FIN_LEDGER_GITHUB_TOKEN'];
-            for (const k of keys) {
-                const t = localStorage.getItem(k);
-                if (t) {
-                    updateTokenStatus('Token status: loaded from browser storage.');
-                    return t.trim();
-                }
-            }
-
-            const tokenInput = document.getElementById('tokenUiInput');
-            if (tokenInput) {
-                tokenInput.focus();
-            }
-            updateTokenStatus('Token status: not saved yet.');
-            alert('GitHub authentication token missing! Please add your token via the Data Synchronization access configuration area.');
-            return null;
         }
 
         function saveTokenFromUi(value) {
