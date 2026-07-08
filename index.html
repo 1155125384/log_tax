@@ -513,15 +513,23 @@
         }
 
         function getGitHubToken() {
-            // Try multiple storage keys so you can pre-store a token in localStorage.
-            // This includes the GitHub Actions secret name you configured for the workflow.
+            // The browser cannot read GitHub Actions secrets directly, so this page must use
+            // a token stored in the browser (localStorage or the URL) to call the GitHub API.
+            const params = new URLSearchParams(window.location.search);
+            const urlToken = params.get('gh_token') || params.get('token') || params.get('MY_GITHUB_TOKEN');
+            if (urlToken) {
+                const trimmed = urlToken.trim();
+                localStorage.setItem('MY_GITHUB_TOKEN', trimmed);
+                localStorage.setItem('FIN_LEDGER_TRIGGER_TOKEN', trimmed);
+                return trimmed;
+            }
+
             const keys = ['MY_GITHUB_TOKEN', 'FIN_LEDGER_TRIGGER_TOKEN', 'FIN_LEDGER_GITHUB_TOKEN'];
             for (const k of keys) {
                 const t = localStorage.getItem(k);
                 if (t) return t.trim();
             }
 
-            // Fallback: prompt once and store it under the configured keys.
             const token = prompt('Enter your GitHub personal access token with repo permissions (it will be saved in localStorage):');
             if (!token) {
                 alert('GitHub token is required to update the repo file. Your local changes are still saved in the browser.');
