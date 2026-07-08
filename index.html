@@ -52,21 +52,15 @@
                 <h2 class="text-sm font-semibold text-slate-700 uppercase tracking-wider">Data Synchronization</h2>
                 <p class="text-xs text-slate-500">Import your ledger repo CSV file to begin, or export updates for your GitHub commit.</p>
             </div>
-            <div class="flex flex-wrap items-center gap-3">
-                <label class="flex items-center justify-center px-4 py-2 border border-slate-300 rounded-lg shadow-sm text-sm font-medium text-slate-700 bg-white hover:bg-slate-50 cursor-pointer transition">
-                    <svg class="w-4 h-4 mr-2 text-slate-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
-                    </svg>
-                    Import transactions.csv
-                    <input type="file" id="csvFileInput" accept=".csv" class="hidden" onchange="handleCSVImport(event)">
-                </label>
-                <button onclick="exportCSV()" class="inline-flex items-center px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg shadow-sm transition">
+            <div class="flex items-center gap-3 w-full max-w-lg">
+                <button onclick="loadCSVFromGitHubUrl(GITHUB_RAW_CSV_URL)" class="inline-flex items-center px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium rounded-lg shadow-sm transition">
                     <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"></path>
                     </svg>
-                    Export Updated CSV
+                    Update from GitHub CSV
                 </button>
             </div>
+            <p id="githubCsvHint" class="mt-2 text-[11px] text-slate-500">This page always loads from the repo CSV at <code>transactions_ledger.csv</code>. Committing a new entry will also attempt to update the GitHub file.</p>
         </section>
 
         <!-- Dynamic KPI Financial Metrics Bar -->
@@ -333,6 +327,12 @@
     <!-- System Control Logic Runtime Scripts Block -->
     <script>
         // System Data Archetype Schemas & Categorical Rules Lists
+        const GITHUB_REPO_OWNER = "1155125384";
+        const GITHUB_REPO_NAME = "log_tax";
+        const GITHUB_BRANCH = "main";
+        const GITHUB_FILE_PATH = "transactions_ledger.csv";
+        const GITHUB_API_BASE = "https://api.github.com";
+        const GITHUB_RAW_CSV_URL = `https://raw.githubusercontent.com/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/${GITHUB_BRANCH}/${GITHUB_FILE_PATH}`;
         const categoriesMap = {
             Income: ["Revenue", "Investment", "Grants", "Subsidy Receipts", "Other Operations Profit"],
             Expense: ["Marketing", "Salary & Wages", "Software Licensing", "Cloud Architecture infrastructure", "Hardware Assets", "Office Rent", "Legal & Consulting", "Miscellaneous Expenditures"]
@@ -418,7 +418,7 @@
         }
 
         // Processing Input submissions logs and mutating structural persistent records state maps arrays arrays
-        function handleFormSubmit(event) {
+        async function handleFormSubmit(event) {
             event.preventDefault();
             const formValues = {
                 date: document.getElementById("formDate").value,
@@ -460,6 +460,87 @@
                 document.getElementById("formNature").value = "Real";
             }
             processFilterView();
+            await commitCsvToGitHub().catch(error => {
+                alert(`GitHub commit failed: ${error.message}`);
+                console.warn('GitHub commit failed:', error);
+            });
+        }
+
+        async function commitCsvToGitHub() {
+            const token = getGitHubToken();
+            if (!token) {
+                return;
+            }
+            const csvRows = [DEFAULT_CSV_HEADERS];
+            transactionsState.forEach(tx => {
+                csvRows.push([
+                    tx.date,
+                    tx.type,
+                    tx.category,
+                    tx.nature || "Real",
+                    tx.amount.toString(),
+                    tx.description,
+                    tx.attachmentBase64 || ""
+                ]);
+            });
+
+            const csvContent = buildRFC4180CSVString(csvRows);
+            const contentBase64 = btoa(unescape(encodeURIComponent(csvContent)));
+            const sha = await fetchGitHubFileSha();
+            if (!sha) {
+                return;
+            }
+
+            const updateResponse = await fetch(`${GITHUB_API_BASE}/repos/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/contents/${encodeURIComponent(GITHUB_FILE_PATH)}?branch=${GITHUB_BRANCH}`, {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `token ${token}`,
+                    'Accept': 'application/vnd.github+json',
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    message: 'Update transactions_ledger.csv from dashboard',
+                    content: contentBase64,
+                    sha,
+                    branch: GITHUB_BRANCH
+                })
+            });
+
+            if (!updateResponse.ok) {
+                const body = await updateResponse.text();
+                throw new Error(`GitHub update failed: ${updateResponse.status} ${updateResponse.statusText} ${body}`);
+            }
+
+            const result = await updateResponse.json();
+            alert('Successfully updated transactions_ledger.csv on GitHub.');
+            return result;
+        }
+
+        function getGitHubToken() {
+            let token = localStorage.getItem('FIN_LEDGER_GITHUB_TOKEN');
+            if (token) {
+                return token;
+            }
+
+            token = prompt('Enter your GitHub personal access token with repo permissions:');
+            if (!token) {
+                alert('GitHub token is required to update the repo file. Your local changes are still saved in the browser.');
+                return null;
+            }
+
+            token = token.trim();
+            localStorage.setItem('FIN_LEDGER_GITHUB_TOKEN', token);
+            return token;
+        }
+
+        async function fetchGitHubFileSha() {
+            const response = await fetch(`${GITHUB_API_BASE}/repos/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/contents/${encodeURIComponent(GITHUB_FILE_PATH)}?ref=${GITHUB_BRANCH}`);
+            if (!response.ok) {
+                const body = await response.text();
+                throw new Error(`Unable to read GitHub file sha: ${response.status} ${response.statusText} ${body}`);
+            }
+            const data = await response.json();
+            return data.sha;
         }
 
         function editRecord(recordId) {
@@ -522,6 +603,7 @@
 
             const rawCache = localStorage.getItem("FIN_LEDGER_STATE");
             const rawCSVCache = localStorage.getItem("FIN_LEDGER_CSV");
+            const hasLocalState = Boolean(rawCache || rawCSVCache);
 
             if (rawCache) {
                 try { transactionsState = JSON.parse(rawCache); } catch(e) { transactionsState = []; }
@@ -530,6 +612,10 @@
                 transactionsState = parseRowsToState(parsedRows);
             } else {
                 initializeCSVTemplateState();
+            }
+
+            if (!hasLocalState) {
+                loadCSVFromGitHubUrl(GITHUB_RAW_CSV_URL, true);
             }
 
             const rawTaxCache = localStorage.getItem("FIN_LEDGER_TAXRATE");
@@ -994,80 +1080,80 @@
         }
 
         // External CSV File Workspace Operations
-        function handleCSVImport(event) {
-            const targetedUploadFile = event.target.files[0];
-            if (!targetedUploadFile) return;
-
-            const fileSystemReader = new FileReader();
-            fileSystemReader.onload = function(e) {
-                const rawStringResult = e.target.result;
-                const parseMatrixRows = parseRFC4180CSV(rawStringResult);
-
-                if (parseMatrixRows.length < 2) {
-                    alert("The provided document file metadata does not contain matching ledger arrays contexts rows values.");
-                    return;
+        function normalizeGitHubRawUrl(url) {
+            try {
+                const parsed = new URL(url);
+                if (parsed.hostname === 'github.com' && parsed.pathname.includes('/blob/')) {
+                    parsed.hostname = 'raw.githubusercontent.com';
+                    parsed.pathname = parsed.pathname.replace('/blob/', '/');
+                    return parsed.toString();
                 }
-
-                const headersMapArray = parseMatrixRows[0].map(h => h.trim());
-                const targetStateBuffer = [];
-
-                for (let r = 1; r < parseMatrixRows.length; r++) {
-                    const dataRow = parseMatrixRows[r];
-                    if (dataRow.length < 5) continue; // Skip corrupted empty rows
-
-                    const recordRow = {
-                        id: 'tx_row_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5) + '_' + r,
-                        date: dataRow[headersMapArray.indexOf("Date")] || new Date().toISOString().split('T')[0],
-                        type: dataRow[headersMapArray.indexOf("Type")] || "Expense",
-                        category: dataRow[headersMapArray.indexOf("Category")] || "Miscellaneous Expenditures",
-                        amount: parseFloat(dataRow[headersMapArray.indexOf("Amount")] || 0),
-                        description: dataRow[headersMapArray.indexOf("Description")] || "",
-                        attachmentBase64: dataRow[headersMapArray.indexOf("AttachmentBase64")] || ""
-                    };
-                    targetStateBuffer.push(recordRow);
-                }
-
-                transactionsState = targetStateBuffer;
-                saveWorkspaceToLocalStorage();
-                currentActivePage = 1;
-                processFilterView();
-                document.getElementById("csvFileInput").value = "";
-                alert(`Successfully synchronized ${transactionsState.length} records into local workspace memory.`);
-            };
-            fileSystemReader.readAsText(targetedUploadFile);
+            } catch (_e) {
+                return url;
+            }
+            return url;
         }
 
-        function exportCSV() {
-            if (transactionsState.length === 0) {
-                alert("Your active data workspace is currently empty. There is no historical trace array layout mapping records to export.");
+        function loadCSVFromGitHubUrl(urlOverride, silent = false) {
+            const rawUrlInput = urlOverride || GITHUB_RAW_CSV_URL;
+            if (!rawUrlInput) {
+                if (!silent) {
+                    alert("GitHub CSV URL is not configured.");
+                }
                 return;
             }
 
-            const outputHeaders = ["Date", "Type", "Category", "Nature", "Amount", "Description", "AttachmentBase64"];
-            const csvOutputRowsMatrix = [outputHeaders];
+            const normalizedUrl = normalizeGitHubRawUrl(rawUrlInput);
+            fetch(normalizedUrl)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`Request failed with status ${response.status}`);
+                    }
+                    return response.text();
+                })
+                .then(rawText => {
+                    const parseMatrixRows = parseRFC4180CSV(rawText);
+                    if (parseMatrixRows.length < 2) {
+                        throw new Error("CSV file appears empty or invalid.");
+                    }
 
-            // Reconstruct rows into matching structural array streams
-            transactionsState.forEach(tx => {
-                csvOutputRowsMatrix.push([
-                    tx.date,
-                    tx.type,
-                    tx.category,
-                    tx.nature || "Real",
-                    tx.amount.toString(),
-                    tx.description,
-                    tx.attachmentBase64 || ""
-                ]);
-            });
+                    const headersMapArray = parseMatrixRows[0].map(h => h.trim());
+                    const targetStateBuffer = [];
 
-            const unifiedCSVStringPayload = buildRFC4180CSVString(csvOutputRowsMatrix);
-            const binaryBlobPayload = new Blob([unifiedCSVStringPayload], { type: 'text/csv;charset=utf-8;' });
-            const temporaryDownloadAnchor = document.createElement("a");
-            
-            temporaryDownloadAnchor.href = URL.createObjectURL(binaryBlobPayload);
-            temporaryDownloadAnchor.setAttribute("download", `transactions_ledger_export_${new Date().toISOString().split('T')[0]}.csv`);
-            document.body.appendChild(temporaryDownloadAnchor);
-            temporaryDownloadAnchor.click();
-            document.body.removeChild(temporaryDownloadAnchor);
+                    for (let r = 1; r < parseMatrixRows.length; r++) {
+                        const dataRow = parseMatrixRows[r];
+                        if (dataRow.length < 5) continue;
+
+                        targetStateBuffer.push({
+                            id: 'tx_row_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5) + '_' + r,
+                            date: dataRow[headersMapArray.indexOf("Date")] || new Date().toISOString().split('T')[0],
+                            type: dataRow[headersMapArray.indexOf("Type")] || "Expense",
+                            category: dataRow[headersMapArray.indexOf("Category")] || "Miscellaneous Expenditures",
+                            nature: dataRow[headersMapArray.indexOf("Nature")] || "Real",
+                            amount: parseFloat(dataRow[headersMapArray.indexOf("Amount")] || 0),
+                            description: dataRow[headersMapArray.indexOf("Description")] || "",
+                            attachmentBase64: dataRow[headersMapArray.indexOf("AttachmentBase64")] || ""
+                        });
+                    }
+
+                    if (!targetStateBuffer.length) {
+                        throw new Error("No valid data rows were found in the CSV.");
+                    }
+
+                    transactionsState = targetStateBuffer;
+                    saveWorkspaceToLocalStorage();
+                    currentActivePage = 1;
+                    processFilterView();
+                    const hintNode = document.getElementById("githubCsvHint");
+                    if (hintNode) {
+                        hintNode.textContent = `Loaded ${transactionsState.length} rows from GitHub.`;
+                    }
+                })
+                .catch(error => {
+                    if (!silent) {
+                        alert(`Unable to load CSV from GitHub: ${error.message}`);
+                    }
+                });
         }
 
         // Asynchronous Document Print Generation Engine functions
