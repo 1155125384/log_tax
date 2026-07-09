@@ -793,12 +793,40 @@
             });
 
             const csvContent = buildRFC4180CSVString(csvRows);
-            const contentBase64 = btoa(unescape(encodeURIComponent(csvContent)));
+            const contentBase64 = utf8ToBase64(csvContent);
 
             await updateGitHubFileContent(contentBase64, 'Update transactions_ledger.csv from dashboard');
 
             alert('Updated transactions_ledger.csv on GitHub successfully.');
             return true;
+        }
+
+        function utf8ToBase64(str) {
+            if (typeof TextEncoder !== 'undefined') {
+                const utf8Bytes = new TextEncoder().encode(str);
+                let binary = '';
+                const chunkSize = 0x8000;
+                for (let offset = 0; offset < utf8Bytes.length; offset += chunkSize) {
+                    const slice = utf8Bytes.subarray(offset, offset + chunkSize);
+                    binary += String.fromCharCode.apply(null, slice);
+                }
+                return btoa(binary);
+            }
+            return btoa(unescape(encodeURIComponent(str)));
+        }
+
+        function base64ToUtf8(base64) {
+            const binary = atob(base64);
+            if (typeof TextDecoder !== 'undefined') {
+                const bytes = new Uint8Array(binary.length);
+                for (let i = 0; i < binary.length; i++) {
+                    bytes[i] = binary.charCodeAt(i);
+                }
+                const text = new TextDecoder('utf-8').decode(bytes);
+                return text.charCodeAt(0) === 0xFEFF ? text.slice(1) : text;
+            }
+            const text = decodeURIComponent(escape(binary));
+            return text.charCodeAt(0) === 0xFEFF ? text.slice(1) : text;
         }
 
         function updateTokenStatus(message) {
@@ -1775,7 +1803,7 @@
                 throw new Error('GitHub API did not return file content.');
             }
 
-            return atob(data.content.replace(/\s+/g, ''));
+            return base64ToUtf8(data.content.replace(/\s+/g, ''));
         }
 
         async function loadCSVFromGitHubUrl(urlOverride, silent = false) {
