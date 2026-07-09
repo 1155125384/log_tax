@@ -430,9 +430,9 @@
         </div>
     </dialog>
 
-    <!-- Global Asset Modal Overlay Container (View Receipts) -->
-    <div id="pdfPrintWrapper" style="position:absolute; left:-9999px; top:0; width:8.5in; pointer-events:none; z-index:-1;">
-        <div id="pdfPrintContainer" class="p-8 text-slate-900 bg-white space-y-8 font-sans" style="box-sizing:border-box; width:100%;">
+    <!-- Off-screen PDF render container used temporarily during export -->
+    <div id="pdfPrintWrapper" style="position:fixed; top:0; left:-9999px; width:210mm; min-height:297mm; overflow:visible; pointer-events:none; z-index:-1; background:#ffffff;">
+        <div id="pdfPrintContainer" class="p-8 text-slate-900 bg-white space-y-8 font-sans" style="box-sizing:border-box; width:190mm; min-height:297mm; background:#ffffff; margin:0 auto;">
             <!-- Programmatically initialized before generating report streams -->
         </div>
     </div>
@@ -2021,6 +2021,35 @@
             }));
         }
 
+        function preparePdfRenderContainer() {
+            const wrapper = document.getElementById('pdfPrintWrapper');
+            const container = document.getElementById('pdfPrintContainer');
+            if (!wrapper || !container) return null;
+
+            wrapper.style.position = 'fixed';
+            wrapper.style.top = '0';
+            wrapper.style.left = '-9999px';
+            wrapper.style.width = '210mm';
+            wrapper.style.minHeight = '297mm';
+            wrapper.style.overflow = 'visible';
+            wrapper.style.pointerEvents = 'none';
+            wrapper.style.zIndex = '-1';
+            wrapper.style.background = '#ffffff';
+            wrapper.style.display = 'block';
+            wrapper.style.visibility = 'visible';
+
+            container.style.display = 'block';
+            container.style.visibility = 'visible';
+            container.style.width = '192mm';
+            container.style.position = 'relative';
+            container.style.minHeight = '287mm';
+            container.style.background = '#ffffff';
+            container.style.margin = '0 auto';
+            container.style.padding = '12px';
+            container.innerHTML = '';
+            return container;
+        }
+
         async function generateCsvBrowserReportPDF() {
             const visibleRows = transactionsState.filter(tx => {
                 return csvBrowserFilterRows.every(row => {
@@ -2056,7 +2085,12 @@
                         ? `Up to ${reportPeriodEnd}`
                         : 'All Periods';
 
-            const targetPrintWrapper = document.getElementById('pdfPrintContainer');
+            const targetPrintWrapper = preparePdfRenderContainer();
+            if (!targetPrintWrapper) {
+                alert('The PDF export container could not be initialized.');
+                return;
+            }
+
             targetPrintWrapper.innerHTML = `
                 <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #0f172a; padding: 24px;">
                     <div style="margin-bottom: 20px;">
@@ -2082,7 +2116,7 @@
                         </div>
                     </div>
                     <div style="overflow-x: auto; margin-bottom: 26px;">
-                        <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
+                        <table style="width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 11px; word-wrap: break-word;">
                             <thead>
                                 <tr>
                                     <th style="text-align:left; padding: 10px 8px; border-bottom: 2px solid #e2e8f0; color: #475569; font-weight: 700;">Date</th>
@@ -2126,12 +2160,16 @@
                 </div>
             `;
 
+            await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+            await waitForImagesToLoad(targetPrintWrapper);
+
             await html2pdf().set({
-                margin: 0.4,
+                margin: 5,
                 filename: `FinLedger_FilteredExport_${new Date().toISOString().split('T')[0]}.pdf`,
-                image: { type: 'jpeg', quality: 0.98 },
-                html2canvas: { scale: 2, useCORS: true, logging: false },
-                jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
+                image: { type: 'jpeg', quality: 0.92 },
+                html2canvas: { scale: 1, useCORS: true, logging: false, windowWidth: 1100, scrollY: 0 },
+                jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+                pagebreak: { mode: ['css', 'legacy'] }
             }).from(targetPrintWrapper).save();
 
             targetPrintWrapper.innerHTML = '';
@@ -2143,7 +2181,11 @@
                 return;
             }
 
-            const targetPrintWrapper = document.getElementById("pdfPrintContainer");
+            const targetPrintWrapper = preparePdfRenderContainer();
+            if (!targetPrintWrapper) {
+                alert('The PDF export container could not be initialized.');
+                return;
+            }
             targetPrintWrapper.innerHTML = "";
 
             let incSum = 0, expSum = 0;
@@ -2262,12 +2304,16 @@
             });
 
             targetPrintWrapper.innerHTML = pdfStructuralContentString;
+            await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+            await waitForImagesToLoad(targetPrintWrapper);
+
             const printingConfigurationOptionsContainer = {
-                margin: 0.4,
+                margin: 5,
                 filename: `FinLedger_Corporate_Tax_Report_${new Date().toISOString().split('T')[0]}.pdf`,
-                image: { type: 'jpeg', quality: 0.98 },
-                html2canvas: { scale: 2, useCORS: true, logging: false },
-                jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
+                image: { type: 'jpeg', quality: 0.92 },
+                html2canvas: { scale: 1, useCORS: true, logging: false, windowWidth: 1100, scrollY: 0 },
+                jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+                pagebreak: { mode: ['css', 'legacy'] }
             };
 
             html2pdf().set(printingConfigurationOptionsContainer).from(targetPrintWrapper).save().then(() => {
