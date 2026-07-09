@@ -1954,172 +1954,95 @@
             visibleRows.forEach(tx => { if (tx.type === 'Income') incSum += tx.amount; else expSum += tx.amount; });
             const netCalc = incSum - expSum;
 
-            const PdfLib = window.jspdf && window.jspdf.jsPDF ? window.jspdf.jsPDF : (window.jsPDF && window.jsPDF.jsPDF ? window.jsPDF.jsPDF : window.jsPDF);
-            if (!PdfLib) return alert('PDF library is not available.');
+            const reportPeriodStart = document.getElementById('filterStartDate').value;
+            const reportPeriodEnd = document.getElementById('filterEndDate').value;
+            const periodLabel = reportPeriodStart && reportPeriodEnd
+                ? `${reportPeriodStart} to ${reportPeriodEnd}`
+                : reportPeriodStart
+                    ? `From ${reportPeriodStart}`
+                    : reportPeriodEnd
+                        ? `Up to ${reportPeriodEnd}`
+                        : 'All Periods';
 
-            const doc = new PdfLib('p', 'pt', 'a4');
-            const pageWidth = doc.internal.pageSize.getWidth();
-            const pageHeight = doc.internal.pageSize.getHeight();
-            const marginX = 40, marginY = 40, lineHeight = 16;
-            let cursorY = marginY;
+            const targetPrintWrapper = document.getElementById('pdfPrintContainer');
+            targetPrintWrapper.innerHTML = `
+                <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #0f172a; padding: 24px;">
+                    <div style="margin-bottom: 20px;">
+                        <h1 style="font-size: 28px; font-weight: 800; color: #1e3a8a; margin: 0;">Balance Sheet of ${periodLabel}</h1>
+                        <p style="font-size: 12px; color: #64748b; margin: 8px 0 0 0; letter-spacing: 0.08em; text-transform: uppercase;">Filtered export from FinLedger</p>
+                    </div>
+                    <div style="display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 26px;">
+                        <div style="flex: 1; min-width: 160px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px;">
+                            <p style="font-size: 10px; color: #64748b; text-transform: uppercase; margin: 0 0 6px 0; letter-spacing: 0.08em;">Records</p>
+                            <p style="font-size: 18px; font-weight: 700; margin: 0; color: #0f172a;">${visibleRows.length}</p>
+                        </div>
+                        <div style="flex: 1; min-width: 160px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px;">
+                            <p style="font-size: 10px; color: #64748b; text-transform: uppercase; margin: 0 0 6px 0; letter-spacing: 0.08em;">Income</p>
+                            <p style="font-size: 18px; font-weight: 700; margin: 0; color: #10b981;">${formatCurrencyValue(incSum)}</p>
+                        </div>
+                        <div style="flex: 1; min-width: 160px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px;">
+                            <p style="font-size: 10px; color: #64748b; text-transform: uppercase; margin: 0 0 6px 0; letter-spacing: 0.08em;">Expense</p>
+                            <p style="font-size: 18px; font-weight: 700; margin: 0; color: #ef4444;">${formatCurrencyValue(expSum)}</p>
+                        </div>
+                        <div style="flex: 1; min-width: 160px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px;">
+                            <p style="font-size: 10px; color: #64748b; text-transform: uppercase; margin: 0 0 6px 0; letter-spacing: 0.08em;">Net</p>
+                            <p style="font-size: 18px; font-weight: 700; margin: 0; color: #0f172a;">${formatCurrencyValue(netCalc)}</p>
+                        </div>
+                    </div>
+                    <div style="overflow-x: auto; margin-bottom: 26px;">
+                        <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
+                            <thead>
+                                <tr>
+                                    <th style="text-align:left; padding: 10px 8px; border-bottom: 2px solid #e2e8f0; color: #475569; font-weight: 700;">Date</th>
+                                    <th style="text-align:left; padding: 10px 8px; border-bottom: 2px solid #e2e8f0; color: #475569; font-weight: 700;">Type</th>
+                                    <th style="text-align:left; padding: 10px 8px; border-bottom: 2px solid #e2e8f0; color: #475569; font-weight: 700;">Category</th>
+                                    <th style="text-align:left; padding: 10px 8px; border-bottom: 2px solid #e2e8f0; color: #475569; font-weight: 700;">Description</th>
+                                    <th style="text-align:right; padding: 10px 8px; border-bottom: 2px solid #e2e8f0; color: #475569; font-weight: 700;">Amount</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${visibleRows.map((tx, index) => `
+                                    <tr style="background:${index % 2 === 0 ? '#ffffff' : '#f8fafc'};">
+                                        <td style="padding: 10px 8px; border-bottom: 1px solid #e2e8f0; color: #334155;">${tx.date}</td>
+                                        <td style="padding: 10px 8px; border-bottom: 1px solid #e2e8f0; color: ${tx.type === 'Income' ? '#10b981' : '#ef4444'}; font-weight: 700;">${tx.type}</td>
+                                        <td style="padding: 10px 8px; border-bottom: 1px solid #e2e8f0; color: #334155;">${tx.category}</td>
+                                        <td style="padding: 10px 8px; border-bottom: 1px solid #e2e8f0; color: #475569;">${escapeHtmlString(tx.description || '—')}</td>
+                                        <td style="padding: 10px 8px; border-bottom: 1px solid #e2e8f0; text-align:right; font-weight: 700; color: #0f172a;">${formatCurrencyValue(tx.amount)}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                    ${visibleRows.filter(tx => tx.attachmentBase64).map((tx, index) => `
+                        <div style="page-break-before: always; padding-top: 24px;">
+                            <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:18px; margin-bottom:18px;">
+                                <h2 style="font-size:16px; color:#1e3a8a; margin:0 0 8px 0;">Audit Proof Appendix Document #${index + 1}</h2>
+                                <p style="margin:0; color:#475569;">Ref: [${tx.date}] ${tx.category || '—'} — ${formatCurrencyValue(tx.amount)}</p>
+                                <p style="margin:8px 0 0 0; color:#64748b;">${escapeHtmlString(tx.description || 'No description')}</p>
+                            </div>
+                            ${tx.attachmentBase64.startsWith('data:application/pdf;') ? `
+                                <div style="background:#f1f5f9; border:1px solid #cbd5e1; border-radius:12px; padding:24px; text-align:center;">
+                                    <p style="font-size:14px; color:#475569; margin:0;">Embedded PDF asset attached to this transaction.</p>
+                                </div>
+                            ` : `
+                                <div style="text-align:center;">
+                                    <img src="${tx.attachmentBase64}" style="max-width:100%; max-height:700px; border:1px solid #e2e8f0; border-radius:12px;" />
+                                </div>
+                            `}
+                        </div>
+                    `).join('')}
+                </div>
+            `;
 
-            // Helper to wrap text
-            const addWrappedText = (text, x, y, maxWidth, fontSize = 10, isBold = false) => {
-                doc.setFontSize(fontSize);
-                doc.setFont('helvetica', isBold ? 'bold' : 'normal');
-                const words = String(text || '').split(/\s+/);
-                let line = '', currentY = y;
-                words.forEach(word => {
-                    const testLine = line ? `${line} ${word}` : word;
-                    if (doc.getTextWidth(testLine) > maxWidth && line) {
-                        doc.text(line, x, currentY);
-                        line = word;
-                        currentY += lineHeight;
-                    } else line = testLine;
-                });
-                if (line) doc.text(line, x, currentY);
-                return currentY + lineHeight;
-            };
+            await html2pdf().set({
+                margin: 0.4,
+                filename: `FinLedger_FilteredExport_${new Date().toISOString().split('T')[0]}.pdf`,
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: { scale: 2, useCORS: true, logging: false },
+                jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
+            }).from(targetPrintWrapper).save();
 
-            // Enhanced Section Header
-            const drawSectionHeader = (title, y) => {
-                doc.setFillColor(241, 245, 249);
-                doc.roundedRect(marginX, y - 14, pageWidth - marginX * 2, 28, 4, 4, 'F');
-                doc.setFont('helvetica', 'bold');
-                doc.setFontSize(12);
-                doc.setTextColor(30, 41, 59);
-                doc.text(title, marginX + 10, y + 5);
-                doc.setTextColor(0, 0, 0);
-            };
-
-            // Main Report Header
-            doc.setFillColor(30, 58, 138); // Deep Indigo
-            doc.rect(0, 0, pageWidth, 110, 'F');
-            
-            doc.setFont('helvetica', 'bold');
-            doc.setFontSize(24);
-            doc.setTextColor(255, 255, 255);
-            doc.text('Data Integrity Export', marginX, 50);
-            
-            doc.setFont('helvetica', 'normal');
-            doc.setFontSize(11);
-            doc.setTextColor(199, 210, 254);
-            doc.text(`Generated on ${new Date().toLocaleString()}`, marginX, 70);
-            
-            doc.setFontSize(10);
-            doc.text(`Records: ${visibleRows.length}  |  Income: ${formatCurrencyValue(incSum)}  |  Expense: ${formatCurrencyValue(expSum)}  |  Net: ${formatCurrencyValue(netCalc)}`, marginX, 90);
-            
-            cursorY = 140;
-            doc.setTextColor(0, 0, 0);
-            drawSectionHeader('Filtered Ledger Entries Data Grid', cursorY);
-            cursorY += 35;
-
-            // Table Header Row
-            doc.setFont('helvetica', 'bold');
-            doc.setFontSize(10);
-            doc.setTextColor(100, 116, 139);
-            doc.text('Date', marginX, cursorY);
-            doc.text('Type', marginX + 70, cursorY);
-            doc.text('Category', marginX + 140, cursorY);
-            doc.text('Amount', pageWidth - marginX - doc.getTextWidth('Amount'), cursorY);
-            cursorY += 10;
-            
-            // Draw a subtle line under headers
-            doc.setDrawColor(226, 232, 240);
-            doc.setLineWidth(1);
-            doc.line(marginX, cursorY, pageWidth - marginX, cursorY);
-            cursorY += 15;
-
-            // Render Rows
-            visibleRows.forEach(tx => {
-                doc.setFont('helvetica', 'normal');
-                doc.setFontSize(10);
-                doc.setTextColor(51, 65, 85);
-                
-                doc.text(tx.date, marginX, cursorY);
-                doc.setTextColor(tx.type === 'Income' ? 16 : 239, tx.type === 'Income' ? 185 : 68, tx.type === 'Income' ? 129 : 68); // Colorize type
-                doc.text(tx.type, marginX + 70, cursorY);
-                doc.setTextColor(51, 65, 85);
-                
-                // Truncate Category if too long
-                let catText = tx.category || '—';
-                if(doc.getTextWidth(catText) > 120) catText = catText.substring(0, 18) + '...';
-                doc.text(catText, marginX + 140, cursorY);
-
-                const amountText = formatCurrencyValue(tx.amount);
-                doc.text(amountText, pageWidth - marginX - doc.getTextWidth(amountText), cursorY);
-                
-                cursorY += 12;
-                
-                // Draw description on next line, indented
-                doc.setFontSize(9);
-                doc.setTextColor(148, 163, 184);
-                cursorY = addWrappedText(`Note: ${tx.description || '—'}`, marginX + 70, cursorY, pageWidth - marginX * 2 - 70, 9);
-                
-                // Subtle divider
-                doc.setDrawColor(241, 245, 249);
-                doc.line(marginX, cursorY - 5, pageWidth - marginX, cursorY - 5);
-                cursorY += 10;
-
-                // Page Break handling
-                if (cursorY > pageHeight - 60) {
-                    doc.addPage();
-                    cursorY = marginY;
-                    drawSectionHeader('Filtered Ledger Entries (Continued)', cursorY);
-                    cursorY += 35;
-                }
-            });
-
-            // Handle Appendices natively in jsPDF
-            const attachmentRows = visibleRows.filter(tx => tx.attachmentBase64);
-            attachmentRows.forEach((tx, index) => {
-                doc.addPage();
-                cursorY = marginY;
-                
-                drawSectionHeader(`Supporting Digital Asset ${index + 1}`, cursorY);
-                cursorY += 30;
-                
-                doc.setFont('helvetica', 'normal');
-                doc.setTextColor(71, 85, 105);
-                cursorY = addWrappedText(`Ref: [${tx.date}] ${tx.category || '—'} - ${tx.description || '—'}`, marginX, cursorY, pageWidth - marginX * 2, 11);
-                
-                cursorY += 10;
-
-                if (tx.attachmentBase64.startsWith('data:application/pdf;')) {
-                    doc.setFillColor(248, 250, 252);
-                    doc.roundedRect(marginX, cursorY, pageWidth - marginX * 2, 80, 8, 8, 'F');
-                    doc.setTextColor(71, 85, 105);
-                    addWrappedText('A PDF attachment is included for this record. View the interactive dashboard to render the full PDF source.', marginX + 20, cursorY + 35, pageWidth - marginX * 2 - 40, 10, true);
-                } else {
-                    try {
-                        const imageWidth = pageWidth - marginX * 2;
-                        const availableHeight = pageHeight - cursorY - 40;
-                        const img = new Image();
-                        img.src = tx.attachmentBase64;
-                        
-                        const ratio = (img.width && img.height) ? img.width / img.height : 1;
-                        let targetWidth = imageWidth;
-                        let targetHeight = targetWidth / ratio;
-                        
-                        if (targetHeight > availableHeight) {
-                            targetHeight = availableHeight;
-                            targetWidth = targetHeight * ratio;
-                        }
-                        
-                        const centeredX = marginX + (imageWidth - targetWidth) / 2;
-                        doc.addImage(tx.attachmentBase64, 'JPEG', centeredX, cursorY, targetWidth, targetHeight);
-                        
-                        // Add image border
-                        doc.setDrawColor(203, 213, 225);
-                        doc.rect(centeredX, cursorY, targetWidth, targetHeight, 'S');
-
-                    } catch (error) {
-                        addWrappedText('The attached image could not be rendered safely in this PDF export.', marginX, cursorY, pageWidth - marginX * 2, 10);
-                    }
-                }
-            });
-
-            doc.save(`FinLedger_Export_${new Date().toISOString().split('T')[0]}.pdf`);
+            targetPrintWrapper.innerHTML = '';
         }
 
         async function generateTaxReportPDF() {
