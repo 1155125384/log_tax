@@ -907,7 +907,8 @@
             const apiUrl = `${GITHUB_API_BASE}/repos/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/contents/${encodeURIComponent(GITHUB_FILE_PATH)}`;
             const maxAttempts = 5;
             let attempt = 0;
-            let backoffMs = 1000; // start with 1s
+            const backoffStepMs = 1000; // add 1s each retry
+            let backoffMs = backoffStepMs;
 
             while (attempt < maxAttempts) {
                 attempt += 1;
@@ -957,9 +958,9 @@
                     updateTokenStatus(retryMessage);
                     showGitHubRetryToast(retryMessage);
 
-                    // Wait with exponential backoff, then retry (sha will be re-fetched at loop start)
+                    // Wait with linear backoff, then retry (sha will be re-fetched at loop start)
                     await new Promise(r => setTimeout(r, backoffMs));
-                    backoffMs = Math.min(backoffMs * 2, 10000);
+                    backoffMs = Math.min(backoffMs + backoffStepMs, 10000);
                     continue;
                 }
 
