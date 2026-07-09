@@ -219,14 +219,14 @@
                     </div>
                     <div>
                         <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">Receipt / Invoice Digital Asset Proof</label>
-                        <div class="mt-1 flex justify-center px-4 py-4 border-2 border-slate-300 border-dashed rounded-lg bg-slate-50 hover:bg-slate-100 transition cursor-pointer relative">
+                        <div id="attachmentDropzone" tabindex="0" role="button" aria-label="Upload file or paste image" class="mt-1 flex justify-center px-4 py-4 border-2 border-slate-300 border-dashed rounded-lg bg-slate-50 hover:bg-slate-100 transition cursor-pointer relative">
                             <div class="space-y-1 text-center pointer-events-none">
                                 <svg class="mx-auto h-8 w-8 text-slate-400" stroke="currentColor" fill="none" viewBox="0 0 48 48">
                                     <path d="M28 8H12a4 4 0 00-4 4v20a4 4 0 004 4h16a4 4 0 004-4V12a4 4 0 00-4-4z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
                                     <path d="M32 16L24 24l-4-4-8 8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
                                 </svg>
                                 <div class="text-xs text-slate-600">
-                                    <span id="fileUploadLabel" class="font-medium text-indigo-600">Upload asset file</span> or drag/drop
+                                    <span id="fileUploadLabel" class="font-medium text-indigo-600">Upload asset file</span>, paste image, or drag/drop
                                 </div>
                                 <p class="text-[10px] text-slate-400">PDF, PNG, JPG formats up to 5MB</p>
                             </div>
@@ -466,6 +466,7 @@
             loadWorkspaceState();
             populateCategories();
             processFilterView();
+            attachAttachmentUploadHandlers();
 
             const tokenInput = document.getElementById('tokenUiInput');
             if (tokenInput) {
@@ -601,9 +602,7 @@
             });
         }
 
-        // Converts local uploads dynamically into system local assets string memory mappings buffer streams
-        async function handleFileSelection(event) {
-            const targetFile = event.target.files[0];
+        async function processAttachmentFile(targetFile) {
             if (!targetFile) return;
 
             if (targetFile.size > 5 * 1024 * 1024) {
@@ -622,13 +621,95 @@
                 }
                 base64AssetStringTemp = encodedData;
                 document.getElementById("attachmentPreviewContainer").classList.remove("hidden");
-                document.getElementById("attachmentFileName").textContent = targetFile.name;
+                document.getElementById("attachmentFileName").textContent = targetFile.name || "Pasted image";
                 document.getElementById("fileUploadLabel").textContent = "File staged successfully";
             } catch (error) {
                 console.error('Image compression failed:', error);
                 alert('Unable to process the selected image.');
                 clearSelectedAttachment();
             }
+        }
+
+        function attachAttachmentUploadHandlers() {
+            const dropzone = document.getElementById("attachmentDropzone");
+            const fileInput = document.getElementById("formAttachment");
+            if (!dropzone || !fileInput) return;
+
+            const setDropzoneHighlight = (isHighlight) => {
+                dropzone.classList.toggle("border-indigo-500", isHighlight);
+                dropzone.classList.toggle("bg-indigo-100", isHighlight);
+                dropzone.classList.toggle("shadow-sm", isHighlight);
+            };
+
+            dropzone.addEventListener("dragover", (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                setDropzoneHighlight(true);
+            });
+
+            ["dragenter", "dragover"].forEach((eventName) => {
+                dropzone.addEventListener(eventName, (event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                });
+            });
+
+            ["dragleave", "dragend", "drop"].forEach((eventName) => {
+                dropzone.addEventListener(eventName, (event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    setDropzoneHighlight(false);
+                });
+            });
+
+            dropzone.addEventListener("drop", async (event) => {
+                const droppedFile = event.dataTransfer?.files?.[0];
+                if (droppedFile) {
+                    await processAttachmentFile(droppedFile);
+                }
+            });
+
+            dropzone.addEventListener("paste", async (event) => {
+                const clipboardItems = event.clipboardData?.items || [];
+                const imageItem = Array.from(clipboardItems).find((item) => item.type.startsWith("image/"));
+                if (!imageItem) return;
+
+                event.preventDefault();
+                const pastedFile = imageItem.getAsFile();
+                if (pastedFile) {
+                    await processAttachmentFile(pastedFile);
+                }
+            });
+
+            dropzone.addEventListener("click", () => fileInput.click());
+            dropzone.addEventListener("keydown", (event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    fileInput.click();
+                }
+            });
+
+            document.addEventListener("paste", async (event) => {
+                const clipboardItems = event.clipboardData?.items || [];
+                const imageItem = Array.from(clipboardItems).find((item) => item.type.startsWith("image/"));
+                if (!imageItem) return;
+
+                const targetElement = event.target;
+                if (targetElement && targetElement.id === "formAttachment") return;
+
+                event.preventDefault();
+                const pastedFile = imageItem.getAsFile();
+                if (pastedFile) {
+                    await processAttachmentFile(pastedFile);
+                }
+            });
+        }
+
+        // Converts local uploads dynamically into system local assets string memory mappings buffer streams
+        async function handleFileSelection(event) {
+            const targetFile = event.target.files[0];
+            if (!targetFile) return;
+            await processAttachmentFile(targetFile);
         }
 
         function clearSelectedAttachment() {
