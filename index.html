@@ -87,6 +87,9 @@
                     <button type="button" onclick="clearTokenFromUi()" class="px-3 py-2 bg-rose-50 text-rose-600 hover:bg-rose-100 text-xs font-medium rounded-lg border border-rose-200 transition">
                         Clear
                     </button>
+                    <button type="button" onclick="clearAppCacheAndCookies()" class="px-3 py-2 bg-slate-100 text-slate-700 hover:bg-slate-200 text-xs font-medium rounded-lg border border-slate-300 transition">
+                        Reset Cache
+                    </button>
                 </div>
             </div>
             <div class="rounded-lg border border-indigo-100 bg-indigo-50 px-3 py-2 text-[11px] text-indigo-700">
@@ -428,8 +431,8 @@
     </dialog>
 
     <!-- Global Asset Modal Overlay Container (View Receipts) -->
-    <div class="hidden">
-        <div id="pdfPrintContainer" class="p-8 text-slate-900 bg-white space-y-8 font-sans">
+    <div id="pdfPrintWrapper" style="position:absolute; left:-9999px; top:0; width:8.5in; pointer-events:none; z-index:-1;">
+        <div id="pdfPrintContainer" class="p-8 text-slate-900 bg-white space-y-8 font-sans" style="box-sizing:border-box; width:100%;">
             <!-- Programmatically initialized before generating report streams -->
         </div>
     </div>
@@ -885,6 +888,41 @@
             }
             updateTokenStatus('Token status: cleared.');
             alert('Token cleared from browser storage.');
+        }
+
+        function clearAllLocalStorageKeys() {
+            const cacheKeys = [
+                'FIN_LEDGER_TRIGGER_TOKEN',
+                'FIN_LEDGER_GITHUB_TOKEN',
+                'FIN_LEDGER_STATE',
+                'FIN_LEDGER_CATEGORIES',
+                'FIN_LEDGER_TAXRATE',
+                'FIN_LEDGER_FORM_STATE',
+                'FIN_LEDGER_CSV'
+            ];
+            cacheKeys.forEach(key => localStorage.removeItem(key));
+        }
+
+        function clearAllCookies() {
+            const cookies = document.cookie.split(';');
+            cookies.forEach(cookie => {
+                const eqPos = cookie.indexOf('=');
+                const name = eqPos > -1 ? cookie.substr(0, eqPos).trim() : cookie.trim();
+                if (name) {
+                    document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;`;
+                    document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=${location.pathname};`;
+                }
+            });
+        }
+
+        function clearAppCacheAndCookies() {
+            if (!confirm('Clear all FinLedger cache and cookies, then reload the page?')) return;
+            clearAllLocalStorageKeys();
+            clearAllCookies();
+            localStorage.removeItem('FIN_LEDGER_TRIGGER_TOKEN');
+            localStorage.removeItem('FIN_LEDGER_GITHUB_TOKEN');
+            updateTokenStatus('Application cache cleared. Reloading...');
+            location.reload(true);
         }
 
         async function fetchGitHubFileSha() {
