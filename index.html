@@ -884,25 +884,33 @@
                 throw new Error('Please save a GitHub PAT with repo scope to update the file.');
             }
 
-            const sha = await fetchGitHubFileSha();
             const apiUrl = `${GITHUB_API_BASE}/repos/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/contents/${encodeURIComponent(GITHUB_FILE_PATH)}`;
-            const response = await fetch(apiUrl, {
-                method: 'PUT',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Accept': 'application/vnd.github+json',
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    message: commitMessage,
-                    content: contentBase64,
-                    sha,
-                    branch: GITHUB_BRANCH
-                })
-            });
+            let sha = await fetchGitHubFileSha();
+            const maxRetries = 3;
+            let attempt = 0;
 
-            if (!response.ok) {
-                let responseBody = await response.text();
+            while (attempt < maxRetries) {
+                attempt += 1;
+                const response = await fetch(apiUrl, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Accept': 'application/vnd.github+json',
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        message: commitMessage,
+                        content: contentBase64,
+                        sha,
+                        branch: GITHUB_BRANCH
+                    })
+                });
+
+                if (response.ok) {
+                    return await response.json();
+                }
+
+                const responseBody = await response.text();
                 let parsedBody = responseBody;
                 try {
                     parsedBody = JSON.parse(responseBody);
@@ -911,10 +919,17 @@
                 }
 
                 const bodyMessage = typeof parsedBody === 'object' && parsedBody.message ? parsedBody.message : parsedBody;
+
+                if (response.status === 409 && attempt < maxRetries) {
+                    // File SHA conflict: refresh the SHA and retry once.
+                    sha = await fetchGitHubFileSha();
+                    continue;
+                }
+
                 throw new Error(`GitHub file update failed: ${response.status} ${response.statusText}: ${bodyMessage}`);
             }
 
-            return await response.json();
+            throw new Error('GitHub file update failed after retrying due to SHA conflict. Please try again.');
         }
 
         function editRecord(recordId) {
