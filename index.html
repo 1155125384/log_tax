@@ -767,14 +767,10 @@
 
             saveWorkspaceToLocalStorage();
             
-            // Clean dynamic parameters states contexts reset loops
+            // Clean only the inputs that should reset after submit
             document.getElementById("formAmount").value = "";
             document.getElementById("formDescription").value = "";
             clearSelectedAttachment();
-            initializeDefaults();
-            if (!currentEditRecordId) {
-                document.getElementById("formNature").value = "Real";
-            }
             processFilterView();
             await commitCsvToGitHub().catch(error => {
                 alert(`GitHub commit failed: ${error.message}`);
@@ -783,8 +779,6 @@
         }
 
         async function commitCsvToGitHub() {
-            // Trigger the existing GitHub Actions workflow using a PAT from the page.
-            // The workflow itself will use the GitHub Actions secret to write and push the CSV.
             const csvRows = [DEFAULT_CSV_HEADERS];
             transactionsState.forEach(tx => {
                 csvRows.push([
@@ -801,50 +795,9 @@
             const csvContent = buildRFC4180CSVString(csvRows);
             const contentBase64 = btoa(unescape(encodeURIComponent(csvContent)));
 
-            const tokenInput = document.getElementById('tokenUiInput');
-            const pat = (tokenInput && tokenInput.value && tokenInput.value.trim())
-                ? tokenInput.value.trim()
-                : localStorage.getItem('FIN_LEDGER_TRIGGER_TOKEN') || localStorage.getItem('FIN_LEDGER_GITHUB_TOKEN') || '';
+            await updateGitHubFileContent(contentBase64, 'Update transactions_ledger.csv from dashboard');
 
-            if (!pat) {
-                updateTokenStatus('Token status: not saved yet.');
-                throw new Error('Please save a GitHub PAT with repo scope to trigger the workflow.');
-            }
-
-            const dispatchUrl = `${GITHUB_API_BASE}/repos/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/dispatches`;
-            const resp = await fetch(dispatchUrl, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${pat}`,
-                    'Accept': 'application/vnd.github+json',
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    event_type: 'update_csv',
-                    client_payload: { csv_base64: contentBase64 }
-                })
-            });
-
-            if (!resp.ok) {
-                let responseBody = await resp.text();
-                let parsedBody = responseBody;
-                try {
-                    parsedBody = JSON.parse(responseBody);
-                } catch (e) {
-                    parsedBody = responseBody;
-                }
-
-                const messageHint = resp.status === 401
-                    ? 'Bad credentials. Please verify your GitHub PAT has repo scope and is still valid, then save it again.'
-                    : resp.status === 403
-                        ? 'Access denied. The PAT may be missing repo scope or GitHub may be blocking the request.'
-                        : 'GitHub dispatch failed.';
-
-                const bodyMessage = typeof parsedBody === 'object' && parsedBody.message ? parsedBody.message : parsedBody;
-                throw new Error(`${messageHint} (${resp.status} ${resp.statusText}: ${bodyMessage})`);
-            }
-
-            alert('Triggered GitHub workflow to update transactions_ledger.csv.');
+            alert('Updated transactions_ledger.csv on GitHub successfully.');
             return true;
         }
 
@@ -896,6 +849,46 @@
             return data.sha;
         }
 
+        async function updateGitHubFileContent(contentBase64, commitMessage) {
+            const token = getSavedPat();
+            if (!token) {
+                updateTokenStatus('Token status: not saved yet.');
+                throw new Error('Please save a GitHub PAT with repo scope to update the file.');
+            }
+
+            const sha = await fetchGitHubFileSha();
+            const apiUrl = `${GITHUB_API_BASE}/repos/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/contents/${encodeURIComponent(GITHUB_FILE_PATH)}`;
+            const response = await fetch(apiUrl, {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Accept': 'application/vnd.github+json',
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    message: commitMessage,
+                    content: contentBase64,
+                    sha,
+                    branch: GITHUB_BRANCH
+                })
+            });
+
+            if (!response.ok) {
+                let responseBody = await response.text();
+                let parsedBody = responseBody;
+                try {
+                    parsedBody = JSON.parse(responseBody);
+                } catch (e) {
+                    parsedBody = responseBody;
+                }
+
+                const bodyMessage = typeof parsedBody === 'object' && parsedBody.message ? parsedBody.message : parsedBody;
+                throw new Error(`GitHub file update failed: ${response.status} ${response.statusText}: ${bodyMessage}`);
+            }
+
+            return await response.json();
+        }
+
         function editRecord(recordId) {
             const targetRecord = transactionsState.find(tx => tx.id === recordId);
             if (!targetRecord) return;
@@ -945,6 +938,13 @@
             localStorage.setItem("FIN_LEDGER_CATEGORIES", JSON.stringify(categoriesMap));
             const taxRateInputVal = document.getElementById("taxRateInput").value;
             localStorage.setItem("FIN_LEDGER_TAXRATE", taxRateInputVal);
+            const formState = {
+                date: document.getElementById("formDate").value,
+                type: document.getElementById("formType").value,
+                category: document.getElementById("formCategory").value,
+                nature: document.getElementById("formNature").value
+            };
+            localStorage.setItem("FIN_LEDGER_FORM_STATE", JSON.stringify(formState));
             buildAndStoreCSVString();
         }
 
@@ -974,6 +974,28 @@
             const rawTaxCache = localStorage.getItem("FIN_LEDGER_TAXRATE");
             if (rawTaxCache) {
                 document.getElementById("taxRateInput").value = rawTaxCache;
+            }
+
+            const rawFormState = localStorage.getItem("FIN_LEDGER_FORM_STATE");
+            if (rawFormState) {
+                try {
+                    const formState = JSON.parse(rawFormState);
+                    if (formState.date) {
+                        document.getElementById("formDate").value = formState.date;
+                    }
+                    if (formState.type) {
+                        document.getElementById("formType").value = formState.type;
+                    }
+                    populateCategories();
+                    if (formState.category) {
+                        document.getElementById("formCategory").value = formState.category;
+                    }
+                    if (formState.nature) {
+                        document.getElementById("formNature").value = formState.nature;
+                    }
+                } catch (e) {
+                    // ignore invalid saved form state
+                }
             }
         }
 
