@@ -95,6 +95,7 @@
             <div id="tokenStatus" class="text-[11px] text-slate-500">Token status: not saved yet.</div>
             <p id="githubCsvHint" class="text-[11px] text-slate-500">This page always loads from the repo CSV at <code>transactions_ledger.csv</code>. Committing a new entry will also attempt to update the GitHub file.</p>
         </section>
+        <div id="githubRetryToast" class="hidden fixed top-4 right-4 z-50 max-w-sm rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-slate-900 shadow-lg shadow-slate-900/10 backdrop-blur-sm"></div>
 
         <!-- Dashboard Period Selector -->
         <section class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 flex flex-col gap-4">
@@ -829,11 +830,30 @@
             return text.charCodeAt(0) === 0xFEFF ? text.slice(1) : text;
         }
 
+        let githubRetryToastTimer = null;
+
         function updateTokenStatus(message) {
             const statusEl = document.getElementById('tokenStatus');
             if (statusEl) {
                 statusEl.textContent = message;
             }
+        }
+
+        function showGitHubRetryToast(message, duration = 5000) {
+            const toast = document.getElementById('githubRetryToast');
+            if (!toast) return;
+
+            toast.textContent = message;
+            toast.classList.remove('hidden');
+
+            if (githubRetryToastTimer) {
+                clearTimeout(githubRetryToastTimer);
+            }
+
+            githubRetryToastTimer = setTimeout(() => {
+                toast.classList.add('hidden');
+                githubRetryToastTimer = null;
+            }, duration);
         }
 
         function saveTokenFromUi(value) {
@@ -885,12 +905,22 @@
             }
 
             const apiUrl = `${GITHUB_API_BASE}/repos/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/contents/${encodeURIComponent(GITHUB_FILE_PATH)}`;
-            let sha = await fetchGitHubFileSha();
-            const maxRetries = 3;
+            const maxAttempts = 5;
             let attempt = 0;
+            let backoffMs = 1000; // start with 1s
 
-            while (attempt < maxRetries) {
+            while (attempt < maxAttempts) {
                 attempt += 1;
+
+                // Always fetch latest SHA just before attempting the PUT
+                let sha;
+                try {
+                    sha = await fetchGitHubFileSha();
+                } catch (err) {
+                    // If reading SHA fails, surface the error
+                    throw new Error(`Unable to fetch file SHA before update: ${err.message || err}`);
+                }
+
                 const response = await fetch(apiUrl, {
                     method: 'PUT',
                     headers: {
@@ -907,29 +937,37 @@
                 });
 
                 if (response.ok) {
+                    // Success
                     return await response.json();
                 }
 
                 const responseBody = await response.text();
                 let parsedBody = responseBody;
-                try {
-                    parsedBody = JSON.parse(responseBody);
-                } catch (e) {
-                    parsedBody = responseBody;
-                }
-
+                try { parsedBody = JSON.parse(responseBody); } catch (e) { /* keep raw */ }
                 const bodyMessage = typeof parsedBody === 'object' && parsedBody.message ? parsedBody.message : parsedBody;
 
-                if (response.status === 409 && attempt < maxRetries) {
-                    // File SHA conflict: refresh the SHA and retry once.
-                    sha = await fetchGitHubFileSha();
+                // If a 409 conflict occurs it's usually because another commit raced in between our SHA fetch and PUT.
+                if (response.status === 409) {
+                    // If we've exhausted attempts, break and throw below
+                    if (attempt >= maxAttempts) break;
+
+                    // Friendly UI hint that we are retrying due to concurrent update
+                    const retryMessage = `GitHub commit queued by another action; retrying in ${Math.floor(backoffMs/1000)}s... (attempt ${attempt}/${maxAttempts})`;
+                    console.warn(`GitHub 409 on attempt ${attempt}: ${bodyMessage}. Retrying after ${backoffMs}ms.`);
+                    updateTokenStatus(retryMessage);
+                    showGitHubRetryToast(retryMessage);
+
+                    // Wait with exponential backoff, then retry (sha will be re-fetched at loop start)
+                    await new Promise(r => setTimeout(r, backoffMs));
+                    backoffMs = Math.min(backoffMs * 2, 10000);
                     continue;
                 }
 
+                // Other failures should not be retried here
                 throw new Error(`GitHub file update failed: ${response.status} ${response.statusText}: ${bodyMessage}`);
             }
 
-            throw new Error('GitHub file update failed after retrying due to SHA conflict. Please try again.');
+            throw new Error('GitHub file update failed after retrying due to concurrent updates. Please try again shortly.');
         }
 
         function editRecord(recordId) {
