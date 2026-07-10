@@ -943,7 +943,7 @@
             }
 
             const apiUrl = `${GITHUB_API_BASE}/repos/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/contents/${encodeURIComponent(GITHUB_FILE_PATH)}`;
-            const maxAttempts = 5;
+            const maxAttempts = 20;
             let attempt = 0;
             const backoffStepMs = 5000; // add 1s each retry
             let backoffMs = backoffStepMs;
