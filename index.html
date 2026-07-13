@@ -643,12 +643,21 @@
             }
         }
 
+        function isImageFile(targetFile) {
+            if (!targetFile) return false;
+            const mimeType = targetFile.type || '';
+            const fileName = (targetFile.name || '').toLowerCase();
+            const extension = fileName.split('.').pop() || '';
+            const allowedExtensions = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'heic', 'heif'];
+            return mimeType.startsWith('image/') || allowedExtensions.includes(extension);
+        }
+
         async function processAttachmentFile(targetFile) {
             if (!targetFile) return;
             if (attachmentIsProcessing) return;
 
-            if (!targetFile.type.startsWith('image/')) {
-                alert('Please choose an image file for photo uploads. PDF uploads are not supported in this form.');
+            if (!isImageFile(targetFile)) {
+                alert('Please choose a supported image file for photo uploads. PNG, JPG, HEIC, and HEIF are supported.');
                 clearSelectedAttachment();
                 return;
             }
@@ -684,6 +693,8 @@
             const dropzone = document.getElementById("attachmentDropzone");
             const fileInput = document.getElementById("formAttachment");
             if (!dropzone || !fileInput) return;
+
+            fileInput.addEventListener('change', handleFileSelection);
 
             const setDropzoneHighlight = (isHighlight) => {
                 dropzone.classList.toggle("border-indigo-500", isHighlight);
