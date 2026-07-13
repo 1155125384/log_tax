@@ -241,9 +241,9 @@
                                 <div class="text-xs text-slate-600">
                                     <span id="fileUploadLabel" class="font-medium text-indigo-600">Upload asset file</span>, paste image, or drag/drop
                                 </div>
-                                <p class="text-[10px] text-slate-400">Phone photos, PNG, JPG, or PDF up to 15MB</p>
+                                <p class="text-[10px] text-slate-400">Phone photos, PNG, or JPG up to 15MB</p>
                             </div>
-                            <input type="file" id="formAttachment" accept="image/*,.pdf" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onchange="handleFileSelection(event)">
+                            <input type="file" id="formAttachment" accept="image/*" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onchange="handleFileSelection(event)">
                         </div>
                         <div id="attachmentPreviewContainer" class="mt-2 hidden flex items-center justify-between bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100">
                             <span id="attachmentFileName" class="text-xs text-indigo-700 truncate max-w-[80%] font-medium">file.png</span>
