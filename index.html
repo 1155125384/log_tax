@@ -1913,12 +1913,12 @@
                 if (parsed.hostname === 'github.com' && parsed.pathname.includes('/blob/')) {
                     parsed.hostname = 'raw.githubusercontent.com';
                     parsed.pathname = parsed.pathname.replace('/blob/', '/');
-                    return parsed.toString();
                 }
+                parsed.searchParams.set('_t', Date.now().toString());
+                return parsed.toString();
             } catch (_e) {
-                return url;
+                return `${url}${url.includes('?') ? '&' : '?'}_t=${Date.now()}`;
             }
-            return url;
         }
 
         let lastCsvRefreshTimestamp = null;
@@ -1997,9 +1997,13 @@
         }
 
         async function fetchGitHubCsvViaRawUrl(rawUrl) {
-            const response = await fetch(rawUrl, {
+            const response = await fetch(normalizeGitHubRawUrl(rawUrl), {
                 method: 'GET',
                 cache: 'no-store',
+                headers: {
+                    'Cache-Control': 'no-cache',
+                    'Pragma': 'no-cache'
+                },
                 mode: 'cors'
             });
 
@@ -2014,7 +2018,9 @@
         async function fetchGitHubCsvViaApi(silent = false) {
             const apiUrl = `${GITHUB_API_BASE}/repos/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/contents/${encodeURIComponent(GITHUB_FILE_PATH)}?ref=${GITHUB_BRANCH}`;
             const headers = {
-                'Accept': 'application/vnd.github+json'
+                'Accept': 'application/vnd.github+json',
+                'Cache-Control': 'no-cache',
+                'Pragma': 'no-cache'
             };
             const token = getSavedPat();
             if (token) {
@@ -2056,10 +2062,10 @@
             setCsvRefreshUiState({ loading: true, message: 'Loading latest CSV from GitHub...' });
 
             const normalizedRawUrl = normalizeGitHubRawUrl(rawUrlInput);
-            let sourceLabel = 'raw URL';
+            let sourceLabel = 'API';
 
             try {
-                const rawText = await fetchGitHubCsvViaRawUrl(normalizedRawUrl);
+                const rawText = await fetchGitHubCsvViaApi(silent);
                 const parseMatrixRows = parseRFC4180CSV(rawText);
                 if (parseMatrixRows.length < 2) {
                     throw new Error("CSV file appears empty or invalid.");
@@ -2099,8 +2105,8 @@
                 setCsvRefreshSuccessState(`Loaded ${transactionsState.length} rows from GitHub via ${sourceLabel}.`);
             } catch (error) {
                 try {
-                    const rawText = await fetchGitHubCsvViaApi(silent);
-                    sourceLabel = 'API';
+                    sourceLabel = 'raw URL';
+                    const rawText = await fetchGitHubCsvViaRawUrl(normalizedRawUrl);
                     const parseMatrixRows = parseRFC4180CSV(rawText);
                     if (parseMatrixRows.length < 2) {
                         throw new Error("CSV file appears empty or invalid.");
