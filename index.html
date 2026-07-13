@@ -232,9 +232,9 @@
                                 <div class="text-xs text-slate-600">
                                     <span id="fileUploadLabel" class="font-medium text-indigo-600">Upload asset file</span>, paste image, or drag/drop
                                 </div>
-                                <p class="text-[10px] text-slate-400">PDF, PNG, JPG formats up to 5MB</p>
+                                <p class="text-[10px] text-slate-400">Phone photos, PNG, JPG, or PDF up to 15MB</p>
                             </div>
-                            <input type="file" id="formAttachment" accept="image/*,.pdf" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onchange="handleFileSelection(event)">
+                            <input type="file" id="formAttachment" accept="image/*,.pdf" capture="environment" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onchange="handleFileSelection(event)">
                         </div>
                         <div id="attachmentPreviewContainer" class="mt-2 hidden flex items-center justify-between bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100">
                             <span id="attachmentFileName" class="text-xs text-indigo-700 truncate max-w-[80%] font-medium">file.png</span>
@@ -609,8 +609,14 @@
         async function processAttachmentFile(targetFile) {
             if (!targetFile) return;
 
-            if (targetFile.size > 5 * 1024 * 1024) {
-                alert("The attached file exceeds our maximum allowable safety boundary constraint of 5MB.");
+            if (!targetFile.type.startsWith('image/')) {
+                alert('Please choose an image file for photo uploads. PDF uploads are not supported in this form.');
+                clearSelectedAttachment();
+                return;
+            }
+
+            if (targetFile.size > 15 * 1024 * 1024) {
+                alert("The attached photo is larger than 15MB. Please choose a smaller photo or take another one at a lower resolution.");
                 clearSelectedAttachment();
                 return;
             }
