@@ -71,6 +71,15 @@
                         Browse CSV Data
                     </button>
                 </div>
+                <div class="flex flex-col gap-2 w-full max-w-lg md:ml-auto md:items-end">
+                    <div id="csvSyncProgressWrap" class="hidden h-2 w-full overflow-hidden rounded-full bg-slate-200">
+                        <div id="csvSyncProgressBar" class="h-full w-0 rounded-full bg-indigo-600 transition-all duration-300"></div>
+                    </div>
+                    <div class="flex items-center justify-between gap-3 text-[11px] text-slate-500">
+                        <span id="csvSyncStatusText">Waiting for a CSV refresh.</span>
+                        <span id="csvSyncLastUpdatedText">Last updated: —</span>
+                    </div>
+                </div>
             </div>
 
             <div class="border-t border-slate-100 pt-4 grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
@@ -234,7 +243,7 @@
                                 </div>
                                 <p class="text-[10px] text-slate-400">Phone photos, PNG, JPG, or PDF up to 15MB</p>
                             </div>
-                            <input type="file" id="formAttachment" accept="image/*,.pdf" capture="environment" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onchange="handleFileSelection(event)">
+                            <input type="file" id="formAttachment" accept="image/*,.pdf" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onchange="handleFileSelection(event)">
                         </div>
                         <div id="attachmentPreviewContainer" class="mt-2 hidden flex items-center justify-between bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100">
                             <span id="attachmentFileName" class="text-xs text-indigo-700 truncate max-w-[80%] font-medium">file.png</span>
@@ -395,9 +404,20 @@
                         <p id="csvBrowserCount" class="text-xs text-slate-500">Loading ledger rows...</p>
                         <p class="text-[10px] text-slate-400">Deleting a row here will also sync the updated CSV back to GitHub when your token is configured.</p>
                     </div>
-                    <div class="flex gap-2">
-                        <button onclick="generateCsvBrowserReportPDF()" class="inline-flex items-center px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium rounded-lg transition">Export filtered PDF</button>
-                        <button onclick="refreshCsvBrowserView()" class="inline-flex items-center px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-medium rounded-lg transition">Refresh view</button>
+                    <div class="flex flex-col items-end gap-2">
+                        <div class="flex gap-2">
+                            <button onclick="generateCsvBrowserReportPDF()" class="inline-flex items-center px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium rounded-lg transition">Export filtered PDF</button>
+                            <button onclick="refreshCsvBrowserView()" class="inline-flex items-center px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-medium rounded-lg transition">Refresh view</button>
+                        </div>
+                        <div class="w-full sm:w-80">
+                            <div id="csvBrowserStatusWrap" class="hidden h-2 w-full overflow-hidden rounded-full bg-slate-200">
+                                <div id="csvBrowserStatusBar" class="h-full w-0 rounded-full bg-indigo-600 transition-all duration-300"></div>
+                            </div>
+                            <div class="mt-1 flex items-center justify-between gap-2 text-[11px] text-slate-500">
+                                <span id="csvBrowserStatusText">Waiting for a refresh.</span>
+                                <span id="csvBrowserLastUpdatedText">Last updated: —</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <div class="mb-4 space-y-3">
@@ -431,8 +451,8 @@
     </dialog>
 
     <!-- Off-screen PDF render container used temporarily during export -->
-    <div id="pdfPrintWrapper" style="position:fixed; top:0; left:-9999px; width:210mm; min-height:297mm; overflow:visible; pointer-events:none; z-index:-1; background:#ffffff;">
-        <div id="pdfPrintContainer" class="p-8 text-slate-900 bg-white space-y-8 font-sans" style="box-sizing:border-box; width:190mm; min-height:297mm; background:#ffffff; margin:0 auto;">
+    <div id="pdfPrintWrapper" style="position:fixed; left:-9999px; top:0; width:210mm; min-height:297mm; overflow:visible; pointer-events:none; z-index:-1; background:#ffffff; opacity:0; visibility:hidden;">
+        <div id="pdfPrintContainer" class="p-8 text-slate-900 bg-white space-y-8 font-sans" style="box-sizing:border-box; width:100%; min-height:297mm; background:#ffffff; margin:0; padding:16mm; line-height:1.4;">
             <!-- Programmatically initialized before generating report streams -->
         </div>
     </div>
@@ -458,6 +478,7 @@
         let chartInstanceReference = null;
         let csvBrowserFilterRows = [];
         let base64AssetStringTemp = "";
+        let attachmentIsProcessing = false;
         let currentActivePage = 1;
         const pageRecordsConstraint = 10;
         let currentCSVString = "";
@@ -606,8 +627,25 @@
             });
         }
 
+        function setAttachmentProcessingState(isProcessing, customLabel = '') {
+            attachmentIsProcessing = isProcessing;
+            const submitButton = document.getElementById('submitButton');
+            const labelNode = document.getElementById('fileUploadLabel');
+
+            if (submitButton) {
+                submitButton.disabled = isProcessing;
+                submitButton.classList.toggle('opacity-70', isProcessing);
+                submitButton.classList.toggle('cursor-not-allowed', isProcessing);
+            }
+
+            if (labelNode) {
+                labelNode.textContent = customLabel || (isProcessing ? 'Processing photo…' : (base64AssetStringTemp ? 'File staged successfully' : 'Upload asset file'));
+            }
+        }
+
         async function processAttachmentFile(targetFile) {
             if (!targetFile) return;
+            if (attachmentIsProcessing) return;
 
             if (!targetFile.type.startsWith('image/')) {
                 alert('Please choose an image file for photo uploads. PDF uploads are not supported in this form.');
@@ -621,6 +659,8 @@
                 return;
             }
 
+            setAttachmentProcessingState(true);
+
             try {
                 const encodedData = await compressAndEncodeImage(targetFile);
                 if (!encodedData) {
@@ -632,7 +672,7 @@
                 base64AssetStringTemp = encodedData;
                 document.getElementById("attachmentPreviewContainer").classList.remove("hidden");
                 document.getElementById("attachmentFileName").textContent = targetFile.name || "Pasted image";
-                document.getElementById("fileUploadLabel").textContent = "File staged successfully";
+                setAttachmentProcessingState(false, 'File staged successfully');
             } catch (error) {
                 console.error('Image compression failed:', error);
                 alert('Unable to process the selected image.');
@@ -724,10 +764,13 @@
 
         function clearSelectedAttachment() {
             base64AssetStringTemp = "";
-            document.getElementById("formAttachment").value = "";
+            const fileInput = document.getElementById("formAttachment");
+            if (fileInput) {
+                fileInput.value = "";
+            }
             document.getElementById("attachmentPreviewContainer").classList.add("hidden");
             document.getElementById("attachmentFileName").textContent = "";
-            document.getElementById("fileUploadLabel").textContent = "Upload asset file";
+            setAttachmentProcessingState(false, 'Upload asset file');
         }
 
         // Processing Input submissions logs and mutating structural persistent records state maps arrays arrays
@@ -735,6 +778,11 @@
             event.preventDefault();
             const descriptionValue = document.getElementById("formDescription").value.trim();
             const hasAttachment = Boolean(base64AssetStringTemp);
+
+            if (attachmentIsProcessing) {
+                alert('Please wait for the photo to finish processing before submitting.');
+                return;
+            }
 
             if (!descriptionValue) {
                 alert('Please enter a description before committing the entry.');
@@ -1849,6 +1897,74 @@
             return url;
         }
 
+        let lastCsvRefreshTimestamp = null;
+
+        function formatLastUpdatedLabel(dateValue) {
+            const parsedDate = dateValue instanceof Date ? dateValue : new Date(dateValue);
+            if (Number.isNaN(parsedDate.getTime())) {
+                return '—';
+            }
+            return parsedDate.toLocaleString([], {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric',
+                hour: 'numeric',
+                minute: '2-digit'
+            });
+        }
+
+        function setCsvRefreshUiState({ loading = false, message = '', lastUpdated = null } = {}) {
+            const statusTextNodes = [
+                document.getElementById('csvSyncStatusText'),
+                document.getElementById('csvBrowserStatusText')
+            ].filter(Boolean);
+            const lastUpdatedNodes = [
+                document.getElementById('csvSyncLastUpdatedText'),
+                document.getElementById('csvBrowserLastUpdatedText')
+            ].filter(Boolean);
+            const progressWraps = [
+                document.getElementById('csvSyncProgressWrap'),
+                document.getElementById('csvBrowserStatusWrap')
+            ].filter(Boolean);
+            const progressBars = [
+                document.getElementById('csvSyncProgressBar'),
+                document.getElementById('csvBrowserStatusBar')
+            ].filter(Boolean);
+
+            const effectiveMessage = message || (loading ? 'Loading latest CSV...' : 'Waiting for a CSV refresh.');
+            const effectiveTimestamp = lastUpdated !== null ? `Last updated: ${formatLastUpdatedLabel(lastUpdated)}` : 'Last updated: —';
+
+            statusTextNodes.forEach(node => {
+                node.textContent = effectiveMessage;
+            });
+            lastUpdatedNodes.forEach(node => {
+                node.textContent = effectiveTimestamp;
+            });
+            progressWraps.forEach(node => {
+                node.classList.toggle('hidden', !loading);
+            });
+            progressBars.forEach(node => {
+                node.style.width = loading ? '100%' : '0%';
+            });
+        }
+
+        function setCsvRefreshSuccessState(message = 'Latest CSV refreshed successfully.') {
+            lastCsvRefreshTimestamp = new Date();
+            setCsvRefreshUiState({
+                loading: false,
+                message,
+                lastUpdated: lastCsvRefreshTimestamp
+            });
+        }
+
+        function setCsvRefreshFailureState(message = 'Unable to refresh CSV right now.') {
+            setCsvRefreshUiState({
+                loading: false,
+                message,
+                lastUpdated: lastCsvRefreshTimestamp
+            });
+        }
+
         function getSavedPat() {
             const tokenInput = document.getElementById('tokenUiInput');
             return (tokenInput && tokenInput.value && tokenInput.value.trim())
@@ -1913,6 +2029,8 @@
                 return;
             }
 
+            setCsvRefreshUiState({ loading: true, message: 'Loading latest CSV from GitHub...' });
+
             const normalizedRawUrl = normalizeGitHubRawUrl(rawUrlInput);
             let sourceLabel = 'raw URL';
 
@@ -1954,6 +2072,7 @@
                 if (hintNode) {
                     hintNode.textContent = `Loaded ${transactionsState.length} rows from GitHub via ${sourceLabel}.`;
                 }
+                setCsvRefreshSuccessState(`Loaded ${transactionsState.length} rows from GitHub via ${sourceLabel}.`);
             } catch (error) {
                 try {
                     const rawText = await fetchGitHubCsvViaApi(silent);
@@ -1994,11 +2113,13 @@
                     if (hintNode) {
                         hintNode.textContent = `Loaded ${transactionsState.length} rows from GitHub via ${sourceLabel}.`;
                     }
+                    setCsvRefreshSuccessState(`Loaded ${transactionsState.length} rows from GitHub via ${sourceLabel}.`);
                 } catch (fallbackError) {
                     if (!silent) {
                         let message = fallbackError.message || String(fallbackError);
                         alert(`Unable to load CSV from GitHub: ${message}`);
                     }
+                    setCsvRefreshFailureState(`Unable to refresh CSV: ${fallbackError.message || String(fallbackError)}`);
                 }
             }
         }
@@ -2042,16 +2163,21 @@
             wrapper.style.zIndex = '-1';
             wrapper.style.background = '#ffffff';
             wrapper.style.display = 'block';
-            wrapper.style.visibility = 'visible';
+            wrapper.style.visibility = 'hidden';
+            wrapper.style.opacity = '0';
+            wrapper.style.margin = '0';
 
             container.style.display = 'block';
             container.style.visibility = 'visible';
-            container.style.width = '192mm';
+            container.style.width = '100%';
+            container.style.maxWidth = '100%';
             container.style.position = 'relative';
-            container.style.minHeight = '287mm';
+            container.style.minHeight = '277mm';
             container.style.background = '#ffffff';
-            container.style.margin = '0 auto';
-            container.style.padding = '12px';
+            container.style.margin = '0';
+            container.style.padding = '16mm';
+            container.style.boxSizing = 'border-box';
+            container.style.lineHeight = '1.4';
             container.innerHTML = '';
             return container;
         }
@@ -2169,11 +2295,14 @@
             await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
             await waitForImagesToLoad(targetPrintWrapper);
 
+            const periodLabelForFileName = (document.getElementById('dashboardPeriodStart').value || 'All') + '_' + (document.getElementById('dashboardPeriodEnd').value || 'All');
+            const safePeriodLabel = periodLabelForFileName.replace(/[^a-zA-Z0-9._-]/g, '_');
+
             await html2pdf().set({
                 margin: 5,
-                filename: `FinLedger_FilteredExport_${new Date().toISOString().split('T')[0]}.pdf`,
+                filename: `TaxReport_${safePeriodLabel}.pdf`,
                 image: { type: 'jpeg', quality: 0.92 },
-                html2canvas: { scale: 1, useCORS: true, logging: false, windowWidth: 1100, scrollY: 0 },
+                html2canvas: { scale: 1, useCORS: true, logging: false, windowWidth: 1100, scrollY: 0, backgroundColor: '#ffffff' },
                 jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
                 pagebreak: { mode: ['css', 'legacy'] }
             }).from(targetPrintWrapper).save();
@@ -2313,11 +2442,14 @@
             await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
             await waitForImagesToLoad(targetPrintWrapper);
 
+            const periodLabelForFileName = (document.getElementById('dashboardPeriodStart').value || 'All') + '_' + (document.getElementById('dashboardPeriodEnd').value || 'All');
+            const safePeriodLabel = periodLabelForFileName.replace(/[^a-zA-Z0-9._-]/g, '_');
+
             const printingConfigurationOptionsContainer = {
                 margin: 5,
-                filename: `FinLedger_Corporate_Tax_Report_${new Date().toISOString().split('T')[0]}.pdf`,
+                filename: `TaxReport_${safePeriodLabel}.pdf`,
                 image: { type: 'jpeg', quality: 0.92 },
-                html2canvas: { scale: 1, useCORS: true, logging: false, windowWidth: 1100, scrollY: 0 },
+                html2canvas: { scale: 1, useCORS: true, logging: false, windowWidth: 1100, scrollY: 0, backgroundColor: '#ffffff' },
                 jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
                 pagebreak: { mode: ['css', 'legacy'] }
             };
