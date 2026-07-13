@@ -1998,9 +1998,11 @@
 
         function buildGitHubCsvCandidateUrls(rawUrl) {
             const candidates = [];
-            const baseUrl = normalizeGitHubRawUrl(rawUrl || GITHUB_RAW_CSV_URL);
+            const normalizedRawUrl = normalizeGitHubRawUrl(rawUrl || GITHUB_RAW_CSV_URL);
+            candidates.push(normalizedRawUrl);
+
             try {
-                const parsed = new URL(baseUrl);
+                const parsed = new URL(normalizedRawUrl);
                 const pathParts = parsed.pathname.split('/').filter(Boolean);
                 const owner = pathParts[0];
                 const repo = pathParts[1];
@@ -2008,14 +2010,17 @@
                 const filePath = pathParts.slice(3).join('/');
 
                 if (owner && repo && branch && filePath) {
-                    candidates.push(`https://cdn.jsdelivr.net/gh/${owner}/${repo}@${branch}/${filePath}`);
+                    candidates.unshift(`https://cdn.jsdelivr.net/gh/${owner}/${repo}@${branch}/${filePath}`);
+                    candidates.push(`${GITHUB_API_BASE}/repos/${owner}/${repo}/contents/${encodeURIComponent(filePath)}?ref=${branch}`);
                 }
             } catch (_error) {
                 // Ignore malformed URLs and fall back to the configured defaults.
             }
 
-            candidates.push(baseUrl);
-            candidates.push(`${GITHUB_API_BASE}/repos/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/contents/${encodeURIComponent(GITHUB_FILE_PATH)}?ref=${GITHUB_BRANCH}`);
+            const defaultApiUrl = `${GITHUB_API_BASE}/repos/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/contents/${encodeURIComponent(GITHUB_FILE_PATH)}?ref=${GITHUB_BRANCH}`;
+            if (!candidates.includes(defaultApiUrl)) {
+                candidates.push(defaultApiUrl);
+            }
             return [...new Set(candidates.filter(Boolean))];
         }
 
@@ -2023,6 +2028,8 @@
             const response = await fetch(url, {
                 method: 'GET',
                 cache: 'no-store',
+                credentials: 'omit',
+                referrerPolicy: 'no-referrer',
                 headers: {
                     'Accept': 'text/csv,text/plain,*/*',
                     'Cache-Control': 'no-cache',
@@ -2059,6 +2066,8 @@
                 method: 'GET',
                 headers,
                 cache: 'no-store',
+                credentials: 'omit',
+                referrerPolicy: 'no-referrer',
                 mode: 'cors'
             });
 
@@ -2148,6 +2157,7 @@
                         } else {
                             sourceLabel = 'raw URL';
                         }
+                        console.warn('GitHub CSV fetch failed for candidate:', candidateUrl, error);
                     }
                 }
 
