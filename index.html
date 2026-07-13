@@ -1999,7 +1999,13 @@
         function buildGitHubCsvCandidateUrls(rawUrl) {
             const candidates = [];
             const normalizedRawUrl = normalizeGitHubRawUrl(rawUrl || GITHUB_RAW_CSV_URL);
-            candidates.push(normalizedRawUrl);
+
+            try {
+                const pageRelativeUrl = new URL(GITHUB_FILE_PATH, window.location.href).toString();
+                candidates.push(pageRelativeUrl);
+            } catch (_error) {
+                // Ignore if the page origin cannot be resolved.
+            }
 
             try {
                 const parsed = new URL(normalizedRawUrl);
@@ -2010,7 +2016,10 @@
                 const filePath = pathParts.slice(3).join('/');
 
                 if (owner && repo && branch && filePath) {
-                    candidates.unshift(`https://cdn.jsdelivr.net/gh/${owner}/${repo}@${branch}/${filePath}`);
+                    candidates.push(`https://cdn.jsdelivr.net/gh/${owner}/${repo}@${branch}/${filePath}`);
+                    candidates.push(`https://raw.githack.com/${owner}/${repo}/${branch}/${filePath}`);
+                    candidates.push(`https://gitcdn.link/cdn/${owner}/${repo}/${branch}/${filePath}`);
+                    candidates.push(normalizedRawUrl);
                     candidates.push(`${GITHUB_API_BASE}/repos/${owner}/${repo}/contents/${encodeURIComponent(filePath)}?ref=${branch}`);
                 }
             } catch (_error) {
@@ -2106,6 +2115,7 @@
                 let lastFetchError = null;
 
                 for (const candidateUrl of candidateUrls) {
+                    setCsvRefreshUiState({ loading: true, message: `Trying CSV load from: ${candidateUrl}` });
                     try {
                         const rawText = candidateUrl.includes('/repos/')
                             ? await fetchGitHubCsvViaApi(silent)
@@ -2154,10 +2164,15 @@
                             sourceLabel = 'API';
                         } else if (candidateUrl.includes('jsDelivr')) {
                             sourceLabel = 'jsDelivr';
+                        } else if (candidateUrl.includes('raw.githack.com')) {
+                            sourceLabel = 'githack';
+                        } else if (candidateUrl.includes('gitcdn.link')) {
+                            sourceLabel = 'gitcdn';
                         } else {
                             sourceLabel = 'raw URL';
                         }
                         console.warn('GitHub CSV fetch failed for candidate:', candidateUrl, error);
+                        setCsvRefreshUiState({ loading: false, message: `CSV candidate failed: ${candidateUrl}` });
                     }
                 }
 
