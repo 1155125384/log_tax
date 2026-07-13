@@ -696,6 +696,9 @@
 
             fileInput.addEventListener('change', handleFileSelection);
 
+            fileInput.style.zIndex = '2';
+            fileInput.style.position = 'relative';
+
             const setDropzoneHighlight = (isHighlight) => {
                 dropzone.classList.toggle("border-indigo-500", isHighlight);
                 dropzone.classList.toggle("bg-indigo-100", isHighlight);
@@ -742,11 +745,21 @@
                 }
             });
 
-            dropzone.addEventListener("click", () => fileInput.click());
+            const openFilePicker = () => {
+                if (fileInput) {
+                    fileInput.click();
+                }
+            };
+
+            dropzone.addEventListener("click", openFilePicker);
+            dropzone.addEventListener("touchend", (event) => {
+                event.preventDefault();
+                openFilePicker();
+            });
             dropzone.addEventListener("keydown", (event) => {
                 if (event.key === "Enter" || event.key === " ") {
                     event.preventDefault();
-                    fileInput.click();
+                    openFilePicker();
                 }
             });
 
